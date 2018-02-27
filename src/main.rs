@@ -1,17 +1,26 @@
 extern crate gstreamer as gst;
 use gst::prelude::*;
+use std::thread;
+use std::time::Duration;
 
 fn main() {
+    //for x in 1..1000 {
+    //    thread::spawn(move || {
+    //        println!("{}", x);
+    //    });
+    //}
+    //thread::sleep(Duration::from_millis(1000));
+
     // Initialize GStreamer
     gst::init().unwrap();
 
     //let uri = "file:///home/seb/library/movies/Brave/Brave.2012.1080p.BRrip.x264.YIFY.mp4";
-    //let uri = "/home/seb/library/movies/Brave/Brave.2012.1080p.BRrip.x264.YIFY.mp4";
-    let uri = "/home/seb/library/movies/Blender\\ Shorts/big-buck-bunny.avi";
+    let uri = "/home/seb/library/movies/Brave/Brave.2012.1080p.BRrip.x264.YIFY.mp4";
+    //let uri = "/home/seb/library/movies/Blender\\ Shorts/big-buck-bunny.avi";
     //let pipeline = gst::parse_launch(&format!("playbin uri={}", uri)).unwrap();
-    let pipeline = gst::parse_launch(&format!("filesrc location={} ! decodebin ! autovideosink", uri)).unwrap();
+    let pipeline = gst::parse_launch(&format!("filesrc location={} ! decodebin ! queue ! videoconvert ! videoscale ! video/x-raw,width=100,height=100 ! pngenc ! multifilesink location=frame%04d.png", uri)).unwrap();
 
-    pipeline.set_state(gst::State::Paused);
+    pipeline.set_state(gst::State::Playing);
     pipeline.get_state(10*gst::SECOND);
 
     let mut i = 0;
@@ -47,8 +56,9 @@ fn main() {
                 let pos: gst::ClockTime = pipeline.query_position().unwrap();
                 println!("async done: {}", pos);
 
-                //pipeline.seek_simple(gst::SeekFlags::FLUSH | gst::SeekFlags::KEY_UNIT, i*5*gst::SECOND).unwrap();
-                pipeline.seek_simple(gst::SeekFlags::FLUSH, i*5*gst::SECOND).unwrap();
+                //pipeline.seek_simple(gst::SeekFlags::FLUSH | gst::SeekFlags::KEY_UNIT, i*gst::SECOND).unwrap();
+                pipeline.seek_simple(gst::SeekFlags::FLUSH, i*gst::SECOND).unwrap();
+                //pipeline.seek_simple(gst::SeekFlags::FLUSH, i*gst::SECOND).unwrap();
                 //pipeline.seek_simple(gst::SeekFlags::ACCURATE, i*5*gst::SECOND).unwrap();
                 //pipeline.get_state(10*gst::SECOND);
                 i += 1;

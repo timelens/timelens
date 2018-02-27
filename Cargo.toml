@@ -5,3 +5,4 @@ authors = ["Sebastian Morr <sebastian@morr.cc>"]
 
 [dependencies]
 gstreamer = "0.10.2"
+image = "*"
