@@ -12,25 +12,71 @@ fn main() {
     //let pipeline = gst::parse_launch(&format!("playbin uri={}", uri)).unwrap();
     //let pipeline = gst::parse_launch(&format!("filesrc location={} ! decodebin ! queue ! videoconvert ! videoscale ! video/x-raw,width=100,height=100 ! appsink
 
-    let playbin = gst::ElementFactory::make("playbin", None).unwrap();
+    //let playbin = gst::ElementFactory::make("playbin", None).unwrap();
 
-    let src = gst::ElementFactory::make("videotestsrc", None).unwrap();
-    let src = gst::ElementFactory::make("filesrc", None).unwrap();
-    src.set_property("location", &uri);
-    let decodebin = gst::ElementFactory::make("decodebin", None).unwrap();
+    //let src = gst::ElementFactory::make("videotestsrc", None).unwrap();
+    let src = gst::ElementFactory::make("uridecodebin", None).unwrap();
+    src.set_property("uri", &uri);
+    //let decodebin = gst::ElementFactory::make("decodebin", None).unwrap();
     let videoconvert = gst::ElementFactory::make("videoconvert", None).unwrap();
     let sink = gst::ElementFactory::make("autovideosink", None).unwrap();
 
-    playbin.set_property("video-sink", &sink);
-    playbin.set_property("uri", &uri);
+    //playbin.set_property("video-sink", &sink);
+    //playbin.set_property("uri", &uri);
 
     let pipeline = gst::Pipeline::new(None);
 
-    //pipeline.add_many(&[&src, &decodebin, &videoconvert, &sink]).unwrap();
+    pipeline.add_many(&[&src, &videoconvert, &sink]).unwrap();
+    gst::Element::link_many(&[&videoconvert, &sink]).unwrap();
+
+    //pipeline.add_many(&[&playbin]).unwrap();
     //gst::Element::link_many(&[&src, &decodebin, &videoconvert, &sink]).unwrap();
 
-    pipeline.add_many(&[&playbin]).unwrap();
-    //gst::Element::link_many(&[&src, &decodebin, &videoconvert, &sink]).unwrap();
+    // Connect the pad-added signal
+    let pipeline_clone = pipeline.clone();
+    let convert_clone = videoconvert.clone();
+    src.connect_pad_added(move |_, src_pad| {
+        let pipeline = &pipeline_clone;
+        let convert = &convert_clone;
+
+        println!(
+            "Received new pad {} from {}",
+            src_pad.get_name(),
+            pipeline.get_name()
+        );
+
+        let sink_pad = convert
+            .get_static_pad("sink")
+            .expect("Failed to get static sink pad from convert");
+        if sink_pad.is_linked() {
+            println!("We are already linked. Ignoring.");
+            return;
+        }
+
+        let new_pad_caps = src_pad
+            .get_current_caps()
+            .expect("Failed to get caps of new pad.");
+        let new_pad_struct = new_pad_caps
+            .get_structure(0)
+            .expect("Failed to get first structure of caps.");
+        let new_pad_type = new_pad_struct.get_name();
+
+        let is_audio = new_pad_type.starts_with("video/x-raw");
+        if !is_audio {
+            println!(
+                "It has type {} which is not raw video. Ignoring.",
+                new_pad_type
+            );
+            return;
+        }
+
+        let ret = src_pad.link(&sink_pad);
+        if ret != gst::PadLinkReturn::Ok {
+            println!("Type is {} but link failed.", new_pad_type);
+        } else {
+            println!("Link succeeded (type {}).", new_pad_type);
+        }
+    });
 
     pipeline.set_state(gst::State::Playing);
 
@@ -67,25 +113,25 @@ fn main() {
                 );
                 break;
             }
-                    MessageView::AsyncDone(..) => {
-                        let pos: gst::ClockTime = pipeline.query_position().unwrap();
-                        println!("async done: {}", pos);
-                        //let buffer = pipeline.emit("convert-sample", &[&gst::Caps::new_simple("image/png", &[("width", &(10i32))])]).unwrap();
-                        //let data = buffer.get_buffer();
-            
-                        //pipeline.seek_simple(gst::SeekFlags::FLUSH | gst::SeekFlags::KEY_UNIT, i*gst::SECOND).unwrap();
-                        pipeline.seek_simple(gst::SeekFlags::FLUSH, i*20*gst::SECOND).unwrap();
-                        //pipeline.seek_simple(gst::SeekFlags::FLUSH, i*gst::SECOND).unwrap();
-                        //pipeline.seek_simple(gst::SeekFlags::ACCURATE, i*5*gst::SECOND).unwrap();
-                        //pipeline.get_state(10*gst::SECOND);
-                        i += 1;
-                        println!("{}", i);
-                    }
-                    MessageView::DurationChanged(..) => {
-                        println!("duration");
-                        let dur: gst::ClockTime = pipeline.query_duration().unwrap();
-                        println!("{}", dur);
-                    }
+            //MessageView::AsyncDone(..) => {
+            //    let pos: gst::ClockTime = pipeline.query_position().unwrap();
+            //    println!("async done: {}", pos);
+            //    //let buffer = pipeline.emit("convert-sample", &[&gst::Caps::new_simple("image/png", &[("width", &(10i32))])]).unwrap();
+            //    //let data = buffer.get_buffer();
+            //
+            //    //pipeline.seek_simple(gst::SeekFlags::FLUSH | gst::SeekFlags::KEY_UNIT, i*gst::SECOND).unwrap();
+            //    pipeline.seek_simple(gst::SeekFlags::FLUSH, i*20*gst::SECOND).unwrap();
+            //    //pipeline.seek_simple(gst::SeekFlags::FLUSH, i*gst::SECOND).unwrap();
+            //    //pipeline.seek_simple(gst::SeekFlags::ACCURATE, i*5*gst::SECOND).unwrap();
+            //    //pipeline.get_state(10*gst::SECOND);
+            //    i += 1;
+            //    println!("{}", i);
+            //}
+            //MessageView::DurationChanged(..) => {
+            //    println!("duration");
+            //    let dur: gst::ClockTime = pipeline.query_duration().unwrap();
+            //    println!("{}", dur);
+            //}
             _ => {
                 println!(".");
             }
