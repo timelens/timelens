@@ -4,5 +4,6 @@ version = "0.1.0"
 authors = ["Sebastian Morr <sebastian@morr.cc>"]
 
 [dependencies]
-gstreamer = "0.10.2"
+gstreamer = "0.11.0"
+gstreamer-app = "0.11.0"
 image = "*"

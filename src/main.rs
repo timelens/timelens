@@ -11,16 +11,32 @@ fn main() {
     let src = gst::ElementFactory::make("uridecodebin", None).unwrap();
     src.set_property("uri", &uri).unwrap();
     let videoconvert = gst::ElementFactory::make("videoconvert", None).unwrap();
+    //let videorate = gst::ElementFactory::make("videorate", None).unwrap();
+    //videorate.set_property("rate", &"1/1").unwrap();
+    //let pngenc = gst::ElementFactory::make("jpegenc", None).unwrap();
     //let sink = gst::ElementFactory::make("autovideosink", None).unwrap();
-    let sink = gst::ElementFactory::make("appsink", None).unwrap();
 
-     let appsink = sink.clone()
-        .dynamic_cast::<gst_app::AppSink>()
-        .expect("Sink element is expected to be an appsink!");
+    let bin = gst::Bin::new(None);
+    let jpegenc = gst::ElementFactory::make("jpegenc", None).unwrap();
+    let multifilesink = gst::ElementFactory::make("multifilesink", None).unwrap();
+    multifilesink.set_property("location", &"/tmp/frame%04d.jpg");
+    bin.add_many(&[&jpegenc, &multifilesink]);
+    gst::Element::link_many(&[&jpegenc, &multifilesink]).unwrap();
+    let pad = jpegenc.get_static_pad("sink").unwrap();
+    bin.add_pad(&gst::GhostPad::new("sink", &pad).unwrap());
+    let sink = bin.clone().dynamic_cast::<gst::Element>().unwrap();
+
+    //let sink = gst::ElementFactory::make("appsink", None).unwrap();
+
+    //let appsink = sink.clone()
+    //    .dynamic_cast::<gst_app::AppSink>()
+    //    .expect("Sink element is expected to be an appsink!");
 
     let pipeline = gst::Pipeline::new(None);
 
-    pipeline.add_many(&[&src, &videoconvert, &sink]).unwrap();
+    pipeline
+        .add_many(&[&src, &videoconvert, &sink])
+        .unwrap();
     gst::Element::link_many(&[&videoconvert, &sink]).unwrap();
 
     // Connect the pad-added signal
@@ -69,65 +85,68 @@ fn main() {
         }
     });
 
-    appsink.set_callbacks(
-        gst_app::AppSinkCallbacks::new()
-            .new_sample(|appsink| {
-                let sample = match appsink.pull_sample() {
-                    None => return gst::FlowReturn::Eos,
-                    Some(sample) => sample,
-                };
+    //appsink.set_callbacks(
+    //    gst_app::AppSinkCallbacks::new()
+    //        .new_sample(|appsink| {
+    //            let sample = match appsink.pull_sample() {
+    //                None => return gst::FlowReturn::Eos,
+    //                Some(sample) => sample,
+    //            };
 
-                let buffer = if let Some(buffer) = sample.get_buffer() {
-                    println!("buffer received!");
-                    buffer
-                } else {
-                    //gst_element_error!(
-                    //    appsink,
-                    //    gst::ResourceError::Failed,
-                    //    ("Failed to get buffer from appsink")
-                    //);
+    //            let buffer = if let Some(buffer) = sample.get_buffer() {
+    //                println!("buffer received!");
+    //                let pts = buffer.get_pts();
+    //                println!("{}", pts);
 
-                    return gst::FlowReturn::Error;
-                };
+    //                buffer
+    //            } else {
+    //                //gst_element_error!(
+    //                //    appsink,
+    //                //    gst::ResourceError::Failed,
+    //                //    ("Failed to get buffer from appsink")
+    //                //);
 
-                let map = if let Some(map) = buffer.map_readable() {
-                    map
-                } else {
-                    //gst_element_error!(
-                    //    appsink,
-                    //    gst::ResourceError::Failed,
-                    //    ("Failed to map buffer readable")
-                    //);
+    //                return gst::FlowReturn::Error;
+    //            };
 
-                    return gst::FlowReturn::Error;
-                };
+    //            let map = if let Some(map) = buffer.map_readable() {
+    //                map
+    //            } else {
+    //                //gst_element_error!(
+    //                //    appsink,
+    //                //    gst::ResourceError::Failed,
+    //                //    ("Failed to map buffer readable")
+    //                //);
 
-                //let samples = if let Ok(samples) = map.as_slice().as_slice_of::<i16>() {
-                //    samples
-                //} else {
-                //    gst_element_error!(
-                //        appsink,
-                //        gst::ResourceError::Failed,
-                //        ("Failed to interprete buffer as S16 PCM")
-                //    );
-                //
-                //    return gst::FlowReturn::Error;
-                //};
+    //                return gst::FlowReturn::Error;
+    //            };
 
-                //let sum: f64 = samples
-                //    .iter()
-                //    .map(|sample| {
-                //        let f = f64::from(*sample) / f64::from(i16::MAX);
-                //        f * f
-                //    })
-                //    .sum();
-                //let rms = (sum / (samples.len() as f64)).sqrt();
-                //println!("rms: {}", rms);
+    //            //let samples = if let Ok(samples) = map.as_slice().as_slice_of::<i16>() {
+    //            //    samples
+    //            //} else {
+    //            //    gst_element_error!(
+    //            //        appsink,
+    //            //        gst::ResourceError::Failed,
+    //            //        ("Failed to interprete buffer as S16 PCM")
+    //            //    );
+    //            //
+    //            //    return gst::FlowReturn::Error;
+    //            //};
 
-                gst::FlowReturn::Ok
-            })
-            .build(),
-    );
+    //            //let sum: f64 = samples
+    //            //    .iter()
+    //            //    .map(|sample| {
+    //            //        let f = f64::from(*sample) / f64::from(i16::MAX);
+    //            //        f * f
+    //            //    })
+    //            //    .sum();
+    //            //let rms = (sum / (samples.len() as f64)).sqrt();
+    //            //println!("rms: {}", rms);
+
+    //            gst::FlowReturn::Ok
+    //        })
+    //        .build(),
+    //);
 
     pipeline.set_state(gst::State::Playing);
 
@@ -170,10 +189,10 @@ fn main() {
                 //let buffer = pipeline.emit("convert-sample", &[&gst::Caps::new_simple("image/png", &[("width", &(10i32))])]).unwrap();
                 //let data = buffer.get_buffer();
 
-                //pipeline.seek_simple(gst::SeekFlags::FLUSH | gst::SeekFlags::KEY_UNIT, i*gst::SECOND).unwrap();
-                pipeline
-                    .seek_simple(gst::SeekFlags::FLUSH, i * 20 * gst::SECOND)
-                    .unwrap();
+                pipeline.seek_simple(gst::SeekFlags::FLUSH | gst::SeekFlags::KEY_UNIT, 3*i*gst::SECOND).unwrap();
+                //pipeline
+                //    .seek_simple(gst::SeekFlags::FLUSH, i * gst::SECOND)
+                //    .unwrap();
                 //pipeline.seek_simple(gst::SeekFlags::FLUSH, i*gst::SECOND).unwrap();
                 //pipeline.seek_simple(gst::SeekFlags::ACCURATE, i*5*gst::SECOND).unwrap();
                 //pipeline.get_state(10*gst::SECOND);
@@ -186,7 +205,7 @@ fn main() {
                 println!("{}", dur);
             }
             _ => {
-                println!(".");
+                //println!(".");
             }
         }
     }
