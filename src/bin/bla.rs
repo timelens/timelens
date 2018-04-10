@@ -34,17 +34,17 @@ const HEIGHT: usize = 240;
 
 fn create_pipeline2(appsrc: gst_app::AppSrc) -> Result<gst::Pipeline, Error> {
     let pipeline = gst::Pipeline::new(None);
-    let src = gst::ElementFactory::make("videotestsrc", None).ok_or(MissingElement("videotestsrc"))?;
-    //let src = gst::ElementFactory::make("uridecodebin", None).ok_or(MissingElement("uridecodebin"))?;
-    //src.set_property("uri", &"file:///home/seb/library/movies/Brave/Brave.2012.1080p.BRrip.x264.YIFY.mp4");
+    //let src = gst::ElementFactory::make("videotestsrc", None).ok_or(MissingElement("videotestsrc"))?;
+    let src = gst::ElementFactory::make("uridecodebin", None).ok_or(MissingElement("uridecodebin"))?;
+    src.set_property("uri", &"file:///home/seb/library/movies/Brave/Brave.2012.1080p.BRrip.x264.YIFY.mp4");
     let convert = gst::ElementFactory::make("videoconvert", None).ok_or(MissingElement("videoconvert"))?;
     let scale = gst::ElementFactory::make("videoscale", None).ok_or(MissingElement("videoscale"))?;
     let rate = gst::ElementFactory::make("videorate", None).ok_or(MissingElement("videorate"))?;
     let sink = gst::ElementFactory::make("appsink", None).ok_or(MissingElement("appsink"))?;
 
     pipeline.add_many(&[&src, &convert, &scale, &rate, &sink])?;
-    //gst::Element::link_many(&[&convert, &scale, &rate, &sink])?;
-    gst::Element::link_many(&[&src, &convert, &scale, &rate, &sink])?;
+    gst::Element::link_many(&[&convert, &scale, &rate, &sink])?;
+    //gst::Element::link_many(&[&src, &convert, &scale, &rate, &sink])?;
 
     let appsink = sink.clone()
         .dynamic_cast::<gst_app::AppSink>()
@@ -56,52 +56,52 @@ fn create_pipeline2(appsrc: gst_app::AppSrc) -> Result<gst::Pipeline, Error> {
         .expect("Failed to create video info");
     appsink.set_caps(&info.to_caps().unwrap());
 
-    //let pipeline_clone = pipeline.clone();
-    //let convert_clone = convert.clone();
-    //src.connect_pad_added(move |_, src_pad| {
-    //    let pipeline = &pipeline_clone;
-    //    let convert = &convert_clone;
+    let pipeline_clone = pipeline.clone();
+    let convert_clone = convert.clone();
+    src.connect_pad_added(move |_, src_pad| {
+        let pipeline = &pipeline_clone;
+        let convert = &convert_clone;
 
-    //    println!(
-    //        "Received new pad {} from {}",
-    //        src_pad.get_name(),
-    //        pipeline.get_name()
-    //    );
+        println!(
+            "Received new pad {} from {}",
+            src_pad.get_name(),
+            pipeline.get_name()
+        );
 
-    //    let sink_pad = convert
-    //        .get_static_pad("sink")
-    //        .expect("Failed to get static sink pad from convert");
-    //    if sink_pad.is_linked() {
-    //        println!("We are already linked. Ignoring.");
-    //        return;
-    //    }
+        let sink_pad = convert
+            .get_static_pad("sink")
+            .expect("Failed to get static sink pad from convert");
+        if sink_pad.is_linked() {
+            println!("We are already linked. Ignoring.");
+            return;
+        }
 
-    ////gst::debug_bin_to_dot_file(&pipeline_clone, gst::DebugGraphDetails::ALL, "output");
+    //gst::debug_bin_to_dot_file(&pipeline_clone, gst::DebugGraphDetails::ALL, "output");
 
-    //    let new_pad_caps = src_pad
-    //        .get_current_caps()
-    //        .expect("Failed to get caps of new pad.");
-    //    let new_pad_struct = new_pad_caps
-    //        .get_structure(0)
-    //        .expect("Failed to get first structure of caps.");
-    //    let new_pad_type = new_pad_struct.get_name();
+        let new_pad_caps = src_pad
+            .get_current_caps()
+            .expect("Failed to get caps of new pad.");
+        let new_pad_struct = new_pad_caps
+            .get_structure(0)
+            .expect("Failed to get first structure of caps.");
+        let new_pad_type = new_pad_struct.get_name();
 
-    //    let is_audio = new_pad_type.starts_with("video/x-raw");
-    //    if !is_audio {
-    //        println!(
-    //            "It has type {} which is not raw video. Ignoring.",
-    //            new_pad_type
-    //        );
-    //        return;
-    //    }
+        let is_audio = new_pad_type.starts_with("video/x-raw");
+        if !is_audio {
+            println!(
+                "It has type {} which is not raw video. Ignoring.",
+                new_pad_type
+            );
+            return;
+        }
 
-    //    let ret = src_pad.link(&sink_pad);
-    //    if ret != gst::PadLinkReturn::Ok {
-    //        println!("Type is {} but link failed.", new_pad_type);
-    //    } else {
-    //        println!("Link succeeded (type {}).", new_pad_type);
-    //    }
-    //});
+        let ret = src_pad.link(&sink_pad);
+        if ret != gst::PadLinkReturn::Ok {
+            println!("Type is {} but link failed.", new_pad_type);
+        } else {
+            println!("Link succeeded (type {}).", new_pad_type);
+        }
+    });
 
     appsink.set_callbacks(
         gst_app::AppSinkCallbacks::new()
