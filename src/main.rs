@@ -56,7 +56,7 @@ fn main() {
         .unwrap();
     gst::Element::link_many(&[&videorate, &videoscale, &videoconvert, &sink]).unwrap();
 
-    sink.set_property("caps", &gst::Caps::new_simple("video/x-raw", &[("format", &"BGRx")]));//(("width", &(400i32)), ("height", &(400i32))]));
+    sink.set_property("caps", &gst::Caps::new_simple("video/x-raw", &[("format", &"BGRx"), ("framerate", &gst::Fraction::new(1, 1)), ("width", &(400i32)), ("height", &(400i32))]));
     let appsink = sink.clone()
         .dynamic_cast::<gst_app::AppSink>()
         .expect("Sink element is expected to be an appsink!");
@@ -77,16 +77,16 @@ fn main() {
     let fakesink = gst::ElementFactory::make("fakevideosink", None).unwrap();
 
 
-    //let jpegenc = gst::ElementFactory::make("jpegenc", None).unwrap();
-    //let multifilesink = gst::ElementFactory::make("multifilesink", None).unwrap();
-    //multifilesink.set_property("location", &"/tmp/frame%04d.jpg");
-    //output_pipeline.add_many(&[&src2, &jpegenc, &multifilesink]).unwrap();
-    //gst::Element::link_many(&[&src2, &jpegenc, &multifilesink]).unwrap();
+    let jpegenc = gst::ElementFactory::make("jpegenc", None).unwrap();
+    let multifilesink = gst::ElementFactory::make("multifilesink", None).unwrap();
+    multifilesink.set_property("location", &"/tmp/frame%04d.jpg");
+    output_pipeline.add_many(&[&src2, &jpegenc, &multifilesink]).unwrap();
+    gst::Element::link_many(&[&src2, &jpegenc, &multifilesink]).unwrap();
 
-    output_pipeline.add_many(&[&src2, &videoconvert2, &fakesink]).unwrap();
-    gst::Element::link_many(&[&src2, &videoconvert2, &fakesink]).unwrap();
+    //output_pipeline.add_many(&[&src2, &videoconvert2, &fakesink]).unwrap();
+    //gst::Element::link_many(&[&src2, &videoconvert2, &fakesink]).unwrap();
 
-    src2.set_property("caps", &gst::Caps::new_simple("video/x-raw", &[("format", &"BGRx")]));//(("width", &(400i32)), ("height", &(400i32))]));
+    src2.set_property("caps", &gst::Caps::new_simple("video/x-raw", &[("format", &"BGRx"), ("framerate", &gst::Fraction::new(1, 1)), ("width", &(400i32)), ("height", &(400i32))]));
     let appsrc = src2.clone()
         .dynamic_cast::<gst_app::AppSrc>()
         .expect("Sink element is expected to be an appsrc!");
