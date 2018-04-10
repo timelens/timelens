@@ -186,28 +186,36 @@ fn main() {
                     return gst::FlowReturn::Error;
                 };
 
-                //let map = if let Some(map) = buffer.map_readable() {
-                //    map
-                //} else {
-                //    //gst_element_error!(
-                //    //    appsink,
-                //    //    gst::ResourceError::Failed,
-                //    //    ("Failed to map buffer readable")
-                //    //);
+                let map = if let Some(map) = buffer.map_readable() {
+                    map
+                } else {
+                    //gst_element_error!(
+                    //    appsink,
+                    //    gst::ResourceError::Failed,
+                    //    ("Failed to map buffer readable")
+                    //);
 
-                //    return gst::FlowReturn::Error;
-                //};
+                    return gst::FlowReturn::Error;
+                };
 
-                //let mut outbuffer = gst::Buffer::with_size(400*400*4).unwrap();
+                let indata = map.as_slice();
 
-                //{
-                //    let outbuffer = outbuffer.get_mut().unwrap();
-                //    //outbuffer.set_pts(i * 500 * gst::MSECOND);
+                let mut outbuffer = gst::Buffer::with_size(400*400*4).unwrap();
 
-                //    let mut data = outbuffer.map_writable().unwrap();
-                //}
+                {
+                    let outbuffer = outbuffer.get_mut().unwrap();
+                    //outbuffer.set_pts(i * 500 * gst::MSECOND);
 
-                match appsrc.push_buffer(buffer.copy_deep().unwrap()) {
+                    let mut data = outbuffer.map_writable().unwrap();
+
+                    for i in 0..400 {
+                        let mut dst = &mut data[400*i*4+0..400*i*4+400*4];
+                        let src = &indata[0..400*4];
+                        dst.copy_from_slice(src);
+                    }
+                }
+
+                match appsrc.push_buffer(outbuffer.copy_deep().unwrap()) {
                     gst::FlowReturn::Ok => println!("ok"),
                     gst::FlowReturn::Flushing => println!("flushing"),
                     gst::FlowReturn::Eos => println!("eos"),
