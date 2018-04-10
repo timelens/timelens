@@ -162,92 +162,12 @@ fn main() {
         }
     });
 
-    appsink.set_callbacks(
-        gst_app::AppSinkCallbacks::new()
-            .new_sample(move |appsink| {
-                let sample = match appsink.pull_sample() {
-                    None => return gst::FlowReturn::Eos,
-                    Some(sample) => sample,
-                };
-
-                let buffer = if let Some(buffer) = sample.get_buffer() {
-                    println!("buffer received!");
-                    let pts = buffer.get_pts();
-                    println!("{}", pts);
-
-                    buffer
-                } else {
-                    //gst_element_error!(
-                    //    appsink,
-                    //    gst::ResourceError::Failed,
-                    //    ("Failed to get buffer from appsink")
-                    //);
-
-                    return gst::FlowReturn::Error;
-                };
-
-                let map = if let Some(map) = buffer.map_readable() {
-                    map
-                } else {
-                    //gst_element_error!(
-                    //    appsink,
-                    //    gst::ResourceError::Failed,
-                    //    ("Failed to map buffer readable")
-                    //);
-
-                    return gst::FlowReturn::Error;
-                };
-
-                let indata = map.as_slice();
-
-                let mut outbuffer = gst::Buffer::with_size(400*400*4).unwrap();
-
-                {
-                    let outbuffer = outbuffer.get_mut().unwrap();
-                    //outbuffer.set_pts(i * 500 * gst::MSECOND);
-
-                    let mut data = outbuffer.map_writable().unwrap();
-
-                    for i in 0..400 {
-                        let mut dst = &mut data[400*i*4+0..400*i*4+400*4];
-                        let src = &indata[0..400*4];
-                        dst.copy_from_slice(src);
-                    }
-                }
-
-                match appsrc.push_buffer(outbuffer.copy_deep().unwrap()) {
-                    gst::FlowReturn::Ok => println!("ok"),
-                    gst::FlowReturn::Flushing => println!("flushing"),
-                    gst::FlowReturn::Eos => println!("eos"),
-                    _ => println!("other")
-                }
-
-                //let samples = if let Ok(samples) = map.as_slice().as_slice_of::<i16>() {
-                //    samples
-                //} else {
-                //    gst_element_error!(
-                //        appsink,
-                //        gst::ResourceError::Failed,
-                //        ("Failed to interprete buffer as S16 PCM")
-                //    );
-                //
-                //    return gst::FlowReturn::Error;
-                //};
-
-                //let sum: f64 = samples
-                //    .iter()
-                //    .map(|sample| {
-                //        let f = f64::from(*sample) / f64::from(i16::MAX);
-                //        f * f
-                //    })
-                //    .sum();
-                //let rms = (sum / (samples.len() as f64)).sqrt();
-                //println!("rms: {}", rms);
-
-                gst::FlowReturn::Ok
-            })
-            .build(),
-    );
+    //appsink.set_callbacks(
+    //    gst_app::AppSinkCallbacks::new()
+    //        .new_sample(move |appsink| {
+    //        })
+    //        .build(),
+    //);
 
 
 
@@ -318,42 +238,127 @@ fn main() {
     //    }
     //}
 
-    let main_loop = glib::MainLoop::new(None, false);
-    let main_loop_clone = main_loop.clone();
-    let main_loop_clone2 = main_loop.clone();
+    //let main_loop = glib::MainLoop::new(None, false);
+    //let main_loop_clone = main_loop.clone();
+    //let main_loop_clone2 = main_loop.clone();
     let bus = pipeline.get_bus().unwrap();
     bus.connect_message(move |_, msg| match msg.view() {
         gst::MessageView::Error(err) => {
-            let main_loop = &main_loop_clone;
+            //let main_loop = &main_loop_clone;
             eprintln!(
                 "Error received from element {:?}: {}",
                 err.get_src().map(|s| s.get_path_string()),
                 err.get_error()
                 );
             eprintln!("Debugging information: {:?}", err.get_debug());
-            main_loop.quit();
+            //main_loop.quit();
         }
         _ => (),
     });
     bus.add_signal_watch();
 
-    //let bus2 = output_pipeline.get_bus().unwrap();
-    //bus2.connect_message(move |_, msg| match msg.view() {
-    //    gst::MessageView::Error(err) => {
-    //        let main_loop = &main_loop_clone2;
-    //        eprintln!(
-    //            "Error received from element {:?}: {}",
-    //            err.get_src().map(|s| s.get_path_string()),
-    //            err.get_error()
-    //            );
-    //        eprintln!("Debugging information: {:?}", err.get_debug());
-    //        main_loop.quit();
-    //    }
-    //    _ => (),
-    //});
-    //bus2.add_signal_watch();
+    let bus2 = output_pipeline.get_bus().unwrap();
+    bus2.connect_message(move |_, msg| match msg.view() {
+        gst::MessageView::Error(err) => {
+            //let main_loop = &main_loop_clone2;
+            eprintln!(
+                "Error received from element {:?}: {}",
+                err.get_src().map(|s| s.get_path_string()),
+                err.get_error()
+                );
+            eprintln!("Debugging information: {:?}", err.get_debug());
+            //main_loop.quit();
+        }
+        _ => (),
+    });
+    bus2.add_signal_watch();
 
-    main_loop.run();
+    //main_loop.run();
+
+    let mut outbuffer = gst::Buffer::with_size(400*400*4).unwrap();
+    let mut i = 0;
+
+    loop {
+        let sample = match appsink.pull_sample() {
+            None => return,
+            Some(sample) => sample,
+        };
+
+        let buffer = if let Some(buffer) = sample.get_buffer() {
+            println!("buffer received!");
+            let pts = buffer.get_pts();
+            println!("{}", pts);
+
+            buffer
+        } else {
+            //gst_element_error!(
+            //    appsink,
+            //    gst::ResourceError::Failed,
+            //    ("Failed to get buffer from appsink")
+            //);
+
+            return;
+        };
+
+        let map = if let Some(map) = buffer.map_readable() {
+            map
+        } else {
+            //gst_element_error!(
+            //    appsink,
+            //    gst::ResourceError::Failed,
+            //    ("Failed to map buffer readable")
+            //);
+
+            return;
+        };
+
+        let indata = map.as_slice();
+
+
+        {
+            let outbuffer = outbuffer.get_mut().unwrap();
+            //outbuffer.set_pts(i * 500 * gst::MSECOND);
+
+            let mut data = outbuffer.map_writable().unwrap();
+
+            let mut dst = &mut data[400*i*4+0..400*i*4+400*4];
+            let src = &indata[0..400*4];
+            dst.copy_from_slice(src);
+
+            i += 1;
+        }
+
+        match appsrc.push_buffer(outbuffer.copy_deep().unwrap()) {
+            gst::FlowReturn::Ok => println!("ok"),
+            gst::FlowReturn::Flushing => println!("flushing"),
+            gst::FlowReturn::Eos => println!("eos"),
+            _ => println!("other")
+        }
+
+        //let samples = if let Ok(samples) = map.as_slice().as_slice_of::<i16>() {
+        //    samples
+        //} else {
+        //    gst_element_error!(
+        //        appsink,
+        //        gst::ResourceError::Failed,
+        //        ("Failed to interprete buffer as S16 PCM")
+        //    );
+        //
+        //    return gst::FlowReturn::Error;
+        //};
+
+        //let sum: f64 = samples
+        //    .iter()
+        //    .map(|sample| {
+        //        let f = f64::from(*sample) / f64::from(i16::MAX);
+        //        f * f
+        //    })
+        //    .sum();
+        //let rms = (sum / (samples.len() as f64)).sqrt();
+        //println!("rms: {}", rms);
+
+        //gst::FlowReturn::Ok
+    }
 
 
     // Shutdown pipeline
