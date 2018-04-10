@@ -27,10 +27,10 @@ fn main() {
     let videoscale = gst::ElementFactory::make("videoscale", None).unwrap();
     let videoconvert = gst::ElementFactory::make("videoconvert", None).unwrap();
 
-    let capsfilter = gst::ElementFactory::make("capsfilter", None).unwrap();
+    //let capsfilter = gst::ElementFactory::make("capsfilter", None).unwrap();
     //capsfilter.set_property("caps", &"video/x-raw,framerate=1/1,width=400,height=400");
     //capsfilter.set_property("caps", &gst::Caps::new_simple("video/x-raw", &[("framerate", &(1i32)), ("width", &(400i32)), ("height", &(400i32))]));
-    capsfilter.set_property("caps", &gst::Caps::new_simple("video/x-raw", &[("framerate", &gst::Fraction::new(1, 1)), ("width", &(400i32)), ("height", &(400i32))]));
+    //capsfilter.set_property("caps", &gst::Caps::new_simple("video/x-raw", &[("framerate", &gst::Fraction::new(1, 1)), ("width", &(400i32)), ("height", &(400i32))]));
     //capsfilter.set_property("caps", &gst::Caps::new_simple("video/x-raw", &[("width", &(400i32)), ("height", &(400i32))]));
 
     //videorate.set_property("rate", &"1/1").unwrap();
@@ -49,42 +49,49 @@ fn main() {
 
     let sink = gst::ElementFactory::make("appsink", None).unwrap();
 
+    let pipeline = gst::Pipeline::new(None);
+
+    pipeline
+        .add_many(&[&src, &videorate, &videoscale, &videoconvert, &sink])
+        .unwrap();
+    gst::Element::link_many(&[&videorate, &videoscale, &videoconvert, &sink]).unwrap();
+
+    sink.set_property("caps", &gst::Caps::new_simple("video/x-raw", &[("format", &"BGRx")]));//(("width", &(400i32)), ("height", &(400i32))]));
     let appsink = sink.clone()
         .dynamic_cast::<gst_app::AppSink>()
         .expect("Sink element is expected to be an appsink!");
     //appsink.set_property_format(gst::Format::Time);
     appsink.set_property("sync", &false);
-    appsink.set_property("caps", &gst::Caps::new_simple("video/x-raw", &[("format", &"BGRx")]));//(("width", &(400i32)), ("height", &(400i32))]));
 
-    let pipeline = gst::Pipeline::new(None);
-
-    pipeline
-        .add_many(&[&src, &videorate, &videoscale, &videoconvert, &capsfilter, &sink])
-        .unwrap();
-    gst::Element::link_many(&[&videorate, &videoscale, &videoconvert, &capsfilter, &sink]).unwrap();
 
     ///////////////////////////////////////////////////////////////////////
     let output_pipeline = gst::Pipeline::new(None);
 
     let src2 = gst::ElementFactory::make("appsrc", None).unwrap();
 
+    //let capsfilter2 = gst::ElementFactory::make("capsfilter", None).unwrap();
+    //capsfilter.set_property("caps", &"video/x-raw,framerate=1/1,width=400,height=400");
+    //capsfilter.set_property("caps", &gst::Caps::new_simple("video/x-raw", &[("framerate", &(1i32)), ("width", &(400i32)), ("height", &(400i32))]));
+    //capsfilter2.set_property("caps", &gst::Caps::new_simple("video/x-raw", &[]));//(("width", &(400i32)), ("height", &(400i32))]));
+    let videoconvert2 = gst::ElementFactory::make("videoconvert", None).unwrap();
+    let fakesink = gst::ElementFactory::make("fakevideosink", None).unwrap();
+
+
+    //let jpegenc = gst::ElementFactory::make("jpegenc", None).unwrap();
+    //let multifilesink = gst::ElementFactory::make("multifilesink", None).unwrap();
+    //multifilesink.set_property("location", &"/tmp/frame%04d.jpg");
+    //output_pipeline.add_many(&[&src2, &jpegenc, &multifilesink]).unwrap();
+    //gst::Element::link_many(&[&src2, &jpegenc, &multifilesink]).unwrap();
+
+    output_pipeline.add_many(&[&src2, &videoconvert2, &fakesink]).unwrap();
+    gst::Element::link_many(&[&src2, &videoconvert2, &fakesink]).unwrap();
+
+    src2.set_property("caps", &gst::Caps::new_simple("video/x-raw", &[("format", &"BGRx")]));//(("width", &(400i32)), ("height", &(400i32))]));
     let appsrc = src2.clone()
         .dynamic_cast::<gst_app::AppSrc>()
         .expect("Sink element is expected to be an appsrc!");
-    //src2.set_property_format(gst::Format::Time);
-    src2.set_property("caps", &gst::Caps::new_simple("video/x-raw", &[("format", &"BGRx")]));//(("width", &(400i32)), ("height", &(400i32))]));
-
-    let capsfilter2 = gst::ElementFactory::make("capsfilter", None).unwrap();
-    //capsfilter.set_property("caps", &"video/x-raw,framerate=1/1,width=400,height=400");
-    //capsfilter.set_property("caps", &gst::Caps::new_simple("video/x-raw", &[("framerate", &(1i32)), ("width", &(400i32)), ("height", &(400i32))]));
-    capsfilter2.set_property("caps", &gst::Caps::new_simple("video/x-raw", &[]));//(("width", &(400i32)), ("height", &(400i32))]));
-
-
-    let jpegenc = gst::ElementFactory::make("jpegenc", None).unwrap();
-    let multifilesink = gst::ElementFactory::make("multifilesink", None).unwrap();
-    multifilesink.set_property("location", &"/tmp/frame%04d.jpg");
-    output_pipeline.add_many(&[&src2, &capsfilter2, &jpegenc, &multifilesink]).unwrap();
-    gst::Element::link_many(&[&src2, &capsfilter2, &jpegenc, &multifilesink]).unwrap();
+    appsrc.set_property_format(gst::Format::Time);
+    appsrc.set_property_block(true);
 
     //let sink2 = gst::ElementFactory::make("autovideosink", None).unwrap();
     //output_pipeline.add_many(&[&src2, &capsfilter2, &sink2]).unwrap();
@@ -98,7 +105,7 @@ fn main() {
         _ => println!("other")
     }
 
-    gst::debug_bin_to_dot_file(&output_pipeline, gst::DebugGraphDetails::ALL, "output");
+    //gst::debug_bin_to_dot_file(&output_pipeline, gst::DebugGraphDetails::ALL, "output");
     //output_pipeline.get_state(10 * gst::SECOND);
     ///////////////////////////////////////////////////////////////////////
 
@@ -124,6 +131,7 @@ fn main() {
             return;
         }
 
+    gst::debug_bin_to_dot_file(&pipeline_clone, gst::DebugGraphDetails::ALL, "output");
 
         let new_pad_caps = src_pad
             .get_current_caps()
@@ -309,21 +317,21 @@ fn main() {
     });
     bus.add_signal_watch();
 
-    let bus2 = output_pipeline.get_bus().unwrap();
-    bus2.connect_message(move |_, msg| match msg.view() {
-        gst::MessageView::Error(err) => {
-            let main_loop = &main_loop_clone2;
-            eprintln!(
-                "Error received from element {:?}: {}",
-                err.get_src().map(|s| s.get_path_string()),
-                err.get_error()
-                );
-            eprintln!("Debugging information: {:?}", err.get_debug());
-            main_loop.quit();
-        }
-        _ => (),
-    });
-    bus2.add_signal_watch();
+    //let bus2 = output_pipeline.get_bus().unwrap();
+    //bus2.connect_message(move |_, msg| match msg.view() {
+    //    gst::MessageView::Error(err) => {
+    //        let main_loop = &main_loop_clone2;
+    //        eprintln!(
+    //            "Error received from element {:?}: {}",
+    //            err.get_src().map(|s| s.get_path_string()),
+    //            err.get_error()
+    //            );
+    //        eprintln!("Debugging information: {:?}", err.get_debug());
+    //        main_loop.quit();
+    //    }
+    //    _ => (),
+    //});
+    //bus2.add_signal_watch();
 
     main_loop.run();
 
