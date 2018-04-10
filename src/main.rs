@@ -74,14 +74,18 @@ fn main() {
     //capsfilter.set_property("caps", &gst::Caps::new_simple("video/x-raw", &[("framerate", &(1i32)), ("width", &(400i32)), ("height", &(400i32))]));
     //capsfilter2.set_property("caps", &gst::Caps::new_simple("video/x-raw", &[]));//(("width", &(400i32)), ("height", &(400i32))]));
     let videoconvert2 = gst::ElementFactory::make("videoconvert", None).unwrap();
-    let fakesink = gst::ElementFactory::make("fakevideosink", None).unwrap();
+    //let fakesink = gst::ElementFactory::make("fakevideosink", None).unwrap();
 
+    let sink2 = gst::ElementFactory::make("autovideosink", None).unwrap();
+    sink2.set_property("sync", &false);
 
-    let jpegenc = gst::ElementFactory::make("jpegenc", None).unwrap();
-    let multifilesink = gst::ElementFactory::make("multifilesink", None).unwrap();
-    multifilesink.set_property("location", &"/tmp/frame%04d.jpg");
-    output_pipeline.add_many(&[&src2, &jpegenc, &multifilesink]).unwrap();
-    gst::Element::link_many(&[&src2, &jpegenc, &multifilesink]).unwrap();
+    //let jpegenc = gst::ElementFactory::make("jpegenc", None).unwrap();
+    //let multifilesink = gst::ElementFactory::make("multifilesink", None).unwrap();
+    //multifilesink.set_property("location", &"/tmp/frame%04d.jpg");
+    //output_pipeline.add_many(&[&src2, &jpegenc, &multifilesink]).unwrap();
+    //gst::Element::link_many(&[&src2, &jpegenc, &multifilesink]).unwrap();
+    output_pipeline.add_many(&[&src2, &videoconvert2, &sink2]).unwrap();
+    gst::Element::link_many(&[&src2, &videoconvert2, &sink2]).unwrap();
 
     //output_pipeline.add_many(&[&src2, &videoconvert2, &fakesink]).unwrap();
     //gst::Element::link_many(&[&src2, &videoconvert2, &fakesink]).unwrap();
@@ -194,6 +198,14 @@ fn main() {
                 //    return gst::FlowReturn::Error;
                 //};
 
+                //let mut outbuffer = gst::Buffer::with_size(400*400*4).unwrap();
+
+                //{
+                //    let outbuffer = outbuffer.get_mut().unwrap();
+                //    //outbuffer.set_pts(i * 500 * gst::MSECOND);
+
+                //    let mut data = outbuffer.map_writable().unwrap();
+                //}
 
                 match appsrc.push_buffer(buffer.copy_deep().unwrap()) {
                     gst::FlowReturn::Ok => println!("ok"),
