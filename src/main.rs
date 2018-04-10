@@ -56,7 +56,7 @@ fn main() {
         .unwrap();
     gst::Element::link_many(&[&videorate, &videoscale, &videoconvert, &sink]).unwrap();
 
-    sink.set_property("caps", &gst::Caps::new_simple("video/x-raw", &[("format", &"BGRx"), ("framerate", &gst::Fraction::new(1, 1)), ("width", &(400i32)), ("height", &(400i32))]));
+    sink.set_property("caps", &gst::Caps::new_simple("video/x-raw", &[("format", &"BGRx"), ("framerate", &gst::Fraction::new(1, 1)), ("width", &(1i32)), ("height", &(400i32))]));
     let appsink = sink.clone()
         .dynamic_cast::<gst_app::AppSink>()
         .expect("Sink element is expected to be an appsink!");
@@ -321,9 +321,11 @@ fn main() {
 
             let mut data = outbuffer.map_writable().unwrap();
 
-            let mut dst = &mut data[400*i*4+0..400*i*4+400*4];
-            let src = &indata[0..400*4];
-            dst.copy_from_slice(src);
+            for y in 0..400 {
+                let mut dst = &mut data[400*y*4+i*4..400*y*4+i*4+3];
+                let src = &indata[y*4..y*4+3];
+                dst.copy_from_slice(src);
+            }
 
             i += 1;
         }
