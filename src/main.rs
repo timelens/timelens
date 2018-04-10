@@ -10,8 +10,17 @@ fn main() {
 
     let src = gst::ElementFactory::make("uridecodebin", None).unwrap();
     src.set_property("uri", &uri).unwrap();
+
+    let videorate = gst::ElementFactory::make("videorate", None).unwrap();
+    let videoscale = gst::ElementFactory::make("videoscale", None).unwrap();
     let videoconvert = gst::ElementFactory::make("videoconvert", None).unwrap();
-    //let videorate = gst::ElementFactory::make("videorate", None).unwrap();
+
+    let capsfilter = gst::ElementFactory::make("capsfilter", None).unwrap();
+    //capsfilter.set_property("caps", &"video/x-raw,framerate=1/1,width=400,height=400");
+    //capsfilter.set_property("caps", &gst::Caps::new_simple("video/x-raw", &[("framerate", &(1i32)), ("width", &(400i32)), ("height", &(400i32))]));
+    capsfilter.set_property("caps", &gst::Caps::new_simple("video/x-raw", &[("framerate", &gst::Fraction::new(1, 1)), ("width", &(400i32)), ("height", &(400i32))]));
+    //capsfilter.set_property("caps", &gst::Caps::new_simple("video/x-raw", &[("width", &(400i32)), ("height", &(400i32))]));
+
     //videorate.set_property("rate", &"1/1").unwrap();
     //let pngenc = gst::ElementFactory::make("jpegenc", None).unwrap();
     //let sink = gst::ElementFactory::make("autovideosink", None).unwrap();
@@ -35,13 +44,13 @@ fn main() {
     let pipeline = gst::Pipeline::new(None);
 
     pipeline
-        .add_many(&[&src, &videoconvert, &sink])
+        .add_many(&[&src, &videorate, &videoscale, &videoconvert, &capsfilter, &sink])
         .unwrap();
-    gst::Element::link_many(&[&videoconvert, &sink]).unwrap();
+    gst::Element::link_many(&[&videorate, &videoscale, &videoconvert, &capsfilter, &sink]).unwrap();
 
     // Connect the pad-added signal
     let pipeline_clone = pipeline.clone();
-    let convert_clone = videoconvert.clone();
+    let convert_clone = videorate.clone();
     src.connect_pad_added(move |_, src_pad| {
         let pipeline = &pipeline_clone;
         let convert = &convert_clone;
@@ -173,7 +182,9 @@ fn main() {
         use gst::MessageView;
         //
         match msg.view() {
-            //        MessageView::Eos(..) => break,
+            MessageView::Eos(..) => {
+                panic!("End of stream");
+            }
             MessageView::Error(err) => {
                 println!(
                     "Error from {:?}: {} ({:?})",
@@ -189,12 +200,10 @@ fn main() {
                 //let buffer = pipeline.emit("convert-sample", &[&gst::Caps::new_simple("image/png", &[("width", &(10i32))])]).unwrap();
                 //let data = buffer.get_buffer();
 
-                pipeline.seek_simple(gst::SeekFlags::FLUSH | gst::SeekFlags::KEY_UNIT, 3*i*gst::SECOND).unwrap();
-                //pipeline
-                //    .seek_simple(gst::SeekFlags::FLUSH, i * gst::SECOND)
-                //    .unwrap();
+                //pipeline.seek_simple(gst::SeekFlags::FLUSH | gst::SeekFlags::KEY_UNIT, i*gst::SECOND).unwrap();
+
                 //pipeline.seek_simple(gst::SeekFlags::FLUSH, i*gst::SECOND).unwrap();
-                //pipeline.seek_simple(gst::SeekFlags::ACCURATE, i*5*gst::SECOND).unwrap();
+                //pipeline.seek_simple(gst::SeekFlags::ACCURATE, i*gst::SECOND).unwrap();
                 //pipeline.get_state(10*gst::SECOND);
                 i += 1;
                 println!("{}", i);
