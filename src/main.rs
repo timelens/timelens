@@ -6,8 +6,10 @@ use std::env;
 use std::cmp;
 
 fn main() {
-    let width = 597;
+    let width = 5619u64;
     let height = 400u64;
+
+    let width2 = 100u64;
 
     let file = env::args().nth(1).unwrap_or(String::from(
         "/home/seb/library/movies/Blender Shorts/big-buck-bunny.avi",
@@ -23,6 +25,7 @@ fn main() {
 
     let videorate = gst::ElementFactory::make("videorate", None).unwrap();
     let videoscale = gst::ElementFactory::make("videoscale", None).unwrap();
+    videoscale.set_property("add-borders", &false);
     let videoconvert = gst::ElementFactory::make("videoconvert", None).unwrap();
 
     let capsfilter = gst::ElementFactory::make("capsfilter", None).unwrap();
@@ -33,7 +36,7 @@ fn main() {
             &[
                 ("format", &"BGRx"),
                 ("framerate", &gst::Fraction::new(1, 1)),
-                ("width", &(1i32)),
+                ("width", &(width2 as i32)),
                 ("height", &(height as i32)),
             ],
         ),
@@ -42,6 +45,13 @@ fn main() {
     let sink = gst::ElementFactory::make("appsink", None).unwrap();
 
     let pipeline = gst::Pipeline::new(None);
+
+    //let output = gst::ElementFactory::make("autovideosink", None).unwrap();
+    //output.set_property("sync", &false);
+    //let tee = gst::ElementFactory::make("tee", None).unwrap();
+
+    //let q1 = gst::ElementFactory::make("queue", None).unwrap();
+    //let q2 = gst::ElementFactory::make("queue", None).unwrap();
 
     pipeline
         .add_many(&[
@@ -53,7 +63,9 @@ fn main() {
             &sink,
         ])
         .unwrap();
+
     gst::Element::link_many(&[&videorate, &videoscale, &videoconvert, &capsfilter, &sink]).unwrap();
+    //gst::Element::link_many(&[&tee, &q2, &output]).unwrap();
 
     let appsink = sink.clone()
         .dynamic_cast::<gst_app::AppSink>()
@@ -199,7 +211,7 @@ fn main() {
                 &[
                     ("format", &"BGRx"),
                     ("framerate", &fps),
-                    ("width", &(1i32)),
+                    ("width", &(width2 as i32)),
                     ("height", &(height as i32)),
                 ],
             ),
@@ -314,10 +326,23 @@ fn main() {
             let mut data = outbuffer.map_writable().unwrap();
 
             for y in 0..height {
-                let mut dst = &mut data
-                    [(width * y * 4 + i * 4) as usize..(width * y * 4 + i * 4 + 3) as usize];
-                let src = &indata[(y * 4) as usize..(y * 4 + 3) as usize];
-                dst.copy_from_slice(src);
+                let mut b: u64 = 0;
+                let mut g: u64 = 0;
+                let mut r: u64 = 0;
+
+                for x in 0..width2 {
+                    b += indata[(width2*y*4+4*x+0) as usize] as u64;
+                    g += indata[(width2*y*4+4*x+1) as usize] as u64;
+                    r += indata[(width2*y*4+4*x+2) as usize] as u64;
+                }
+
+                b /= width2;
+                g /= width2;
+                r /= width2;
+
+                data[(width * y * 4 + i * 4 + 0) as usize] = b as u8;
+                data[(width * y * 4 + i * 4 + 1) as usize] = g as u8;
+                data[(width * y * 4 + i * 4 + 2) as usize] = r as u8;
             }
         }
 
