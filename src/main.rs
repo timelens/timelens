@@ -252,7 +252,12 @@ fn main() {
                 );
             eprintln!("Debugging information: {:?}", err.get_debug());
             //main_loop.quit();
-        }
+        },
+        //gst::MessageView::AsyncDone(..) => {
+        //    let pos: gst::ClockTime = pipeline.query_position().unwrap();
+        //    let s = pos.seconds().unwrap();
+        //    pipeline.seek_simple(gst::SeekFlags::FLUSH | gst::SeekFlags::KEY_UNIT, (s+10)*gst::SECOND).unwrap();
+        //}
         _ => (),
     });
     bus.add_signal_watch();
@@ -268,7 +273,7 @@ fn main() {
                 );
             eprintln!("Debugging information: {:?}", err.get_debug());
             //main_loop.quit();
-        }
+        },
         _ => (),
     });
     bus2.add_signal_watch();
@@ -276,7 +281,9 @@ fn main() {
     //main_loop.run();
 
     let mut outbuffer = gst::Buffer::with_size(400*400*4).unwrap();
-    let mut i = 0;
+//    let mut i = 0;
+
+    let duration: gst::ClockTime = pipeline.query_duration().unwrap();
 
     loop {
         let sample = match appsink.pull_sample() {
@@ -314,6 +321,9 @@ fn main() {
 
         let indata = map.as_slice();
 
+        //let pos: gst::ClockTime = pipeline.query_position().unwrap();
+        let pts: gst::ClockTime = buffer.get_pts();
+        let i = (400*pts.nseconds().unwrap()/duration.nseconds().unwrap()) as usize;
 
         {
             let outbuffer = outbuffer.get_mut().unwrap();
@@ -327,7 +337,7 @@ fn main() {
                 dst.copy_from_slice(src);
             }
 
-            i += 1;
+            //i += 1;
         }
 
         match appsrc.push_buffer(outbuffer.copy_deep().unwrap()) {
