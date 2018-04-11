@@ -3,10 +3,11 @@ extern crate gstreamer as gst;
 extern crate gstreamer_app as gst_app;
 use gst::prelude::*;
 use std::env;
+use std::cmp;
 
 fn main() {
-    let width = 1000u64;
-    let height = 200u64;
+    let width = 597;
+    let height = 400u64;
 
     let file = env::args().nth(1).unwrap_or(String::from("/home/seb/library/movies/Blender Shorts/big-buck-bunny.avi"));
 
@@ -41,7 +42,7 @@ fn main() {
 
 
     ///////////////////////////////////////////////////////////////////////
-    let output_pipeline = gst::Pipeline::new(None);
+    let preview_pipeline = gst::Pipeline::new(None);
 
     let src2 = gst::ElementFactory::make("appsrc", None).unwrap();
 
@@ -52,7 +53,7 @@ fn main() {
     let sink2 = gst::ElementFactory::make("autovideosink", None).unwrap();
     sink2.set_property("sync", &false);
 
-    output_pipeline.add_many(&[&src2, &capsfilter2, &videoconvert2, &sink2]).unwrap();
+    preview_pipeline.add_many(&[&src2, &capsfilter2, &videoconvert2, &sink2]).unwrap();
     gst::Element::link_many(&[&src2, &capsfilter2, &videoconvert2, &sink2]).unwrap();
 
     let appsrc = src2.clone()
@@ -61,7 +62,7 @@ fn main() {
     appsrc.set_property_format(gst::Format::Time);
     appsrc.set_property_block(true);
 
-    match output_pipeline.set_state(gst::State::Playing) {
+    match preview_pipeline.set_state(gst::State::Playing) {
         gst::StateChangeReturn::Success => println!("success"),
         gst::StateChangeReturn::Failure => println!("failure"),
         gst::StateChangeReturn::Async => println!("async"),
@@ -69,6 +70,27 @@ fn main() {
         _ => println!("other")
     }
     ///////////////////////////////////////////////////////////////////////
+    let output_pipeline = gst::Pipeline::new(None);
+
+    let src3 = gst::ElementFactory::make("appsrc", None).unwrap();
+
+    let capsfilter3 = gst::ElementFactory::make("capsfilter", None).unwrap();
+    capsfilter3.set_property("caps", &gst::Caps::new_simple("video/x-raw", &[("format", &"BGRx"), ("framerate", &gst::Fraction::new(1, 1)), ("width", &(width as i32)), ("height", &(height as i32))]));
+
+    let jpegenc = gst::ElementFactory::make("jpegenc", None).unwrap();
+    let filesink = gst::ElementFactory::make("filesink", None).unwrap();
+    filesink.set_property("location", &"/tmp/nordlicht.jpg");
+    output_pipeline.add_many(&[&src3, &capsfilter3, &jpegenc, &filesink]).unwrap();
+    gst::Element::link_many(&[&src3, &capsfilter3, &jpegenc, &filesink]).unwrap();
+
+    let appsrc2 = src3.clone()
+        .dynamic_cast::<gst_app::AppSrc>()
+        .expect("Sink element is expected to be an appsrc!");
+    appsrc2.set_property_format(gst::Format::Time);
+    appsrc2.set_property_block(true);
+
+    ///////////////////////////////////////////////////////////////////////
+
 
 
     let pipeline_clone = pipeline.clone();
@@ -127,7 +149,8 @@ fn main() {
     println!("fps: {}", fps);
 
     capsfilter.set_property("caps", &gst::Caps::new_simple("video/x-raw", &[("format", &"BGRx"), ("framerate", &fps), ("width", &(1i32)), ("height", &(height as i32))])).unwrap();
-    capsfilter2.set_property("caps", &gst::Caps::new_simple("video/x-raw", &[("format", &"BGRx"), ("framerate", &fps), ("width", &(width as i32)), ("height", &(height as i32))])).unwrap();
+    //capsfilter2.set_property("caps", &gst::Caps::new_simple("video/x-raw", &[("format", &"BGRx"), ("framerate", &fps), ("width", &(width as i32)), ("height", &(height as i32))])).unwrap();
+    //capsfilter3.set_property("caps", &gst::Caps::new_simple("video/x-raw", &[("format", &"BGRx"), ("framerate", &fps), ("width", &(width as i32)), ("height", &(height as i32))])).unwrap();
 
     let bus = pipeline.get_bus().unwrap();
     bus.connect_message(move |_, msg| match msg.view() {
@@ -143,7 +166,7 @@ fn main() {
     });
     bus.add_signal_watch();
 
-    let bus2 = output_pipeline.get_bus().unwrap();
+    let bus2 = preview_pipeline.get_bus().unwrap();
     bus2.connect_message(move |_, msg| match msg.view() {
         gst::MessageView::Error(err) => {
             eprintln!(
@@ -157,11 +180,53 @@ fn main() {
     });
     bus2.add_signal_watch();
 
+    let bus3 = output_pipeline.get_bus().unwrap();
+    bus3.connect_message(move |_, msg| match msg.view() {
+        gst::MessageView::Eos(_) => {
+            println!("got eos")
+        }
+        gst::MessageView::Error(err) => {
+            eprintln!(
+                "Error received from element {:?}: {}",
+                err.get_src().map(|s| s.get_path_string()),
+                err.get_error()
+                );
+            eprintln!("Debugging information: {:?}", err.get_debug());
+        },
+        _ => (),
+    });
+    bus3.add_signal_watch();
+
     let mut outbuffer = gst::Buffer::with_size((width*height*4) as usize).unwrap();
 
     loop {
         let sample = match appsink.pull_sample() {
-            None => return,
+            None => {
+                println!("got none");
+                match output_pipeline.set_state(gst::State::Playing) {
+                    gst::StateChangeReturn::Success => println!("success"),
+                    gst::StateChangeReturn::Failure => println!("failure"),
+                    gst::StateChangeReturn::Async => println!("async"),
+                    gst::StateChangeReturn::NoPreroll => println!("nopreroll"),
+                    _ => println!("other")
+                }
+                match appsrc2.push_buffer(outbuffer.copy_deep().unwrap()) {
+                    gst::FlowReturn::Ok => println!("ok"),
+                    gst::FlowReturn::Flushing => println!("flushing"),
+                    gst::FlowReturn::Eos => println!("eos"),
+                    _ => println!("other")
+                }
+                match appsrc2.end_of_stream() {
+                    gst::FlowReturn::Ok => println!("ok"),
+                    gst::FlowReturn::Flushing => println!("flushing"),
+                    gst::FlowReturn::Eos => println!("eos"),
+                    _ => println!("other")
+                }
+                //let ret3 = output_pipeline.set_state(gst::State::Null);
+                //assert_ne!(ret3, gst::StateChangeReturn::Failure);
+                //output_pipeline.get_state(10 * gst::SECOND);
+                break
+            }
             Some(sample) => sample,
         };
 
@@ -184,7 +249,7 @@ fn main() {
         let indata = map.as_slice();
 
         let pts: gst::ClockTime = buffer.get_pts();
-        let i = (width*pts.nseconds().unwrap()/duration.nseconds().unwrap());
+        let i = cmp::min((width*pts.nseconds().unwrap()/duration.nseconds().unwrap()), width-1);
 
         {
             let outbuffer = outbuffer.get_mut().unwrap();
@@ -208,6 +273,8 @@ fn main() {
 
     let ret = pipeline.set_state(gst::State::Null);
     assert_ne!(ret, gst::StateChangeReturn::Failure);
-    let ret2 = output_pipeline.set_state(gst::State::Null);
+    let ret2 = preview_pipeline.set_state(gst::State::Null);
     assert_ne!(ret2, gst::StateChangeReturn::Failure);
+    let ret3 = output_pipeline.set_state(gst::State::Null);
+    assert_ne!(ret3, gst::StateChangeReturn::Failure);
 }
