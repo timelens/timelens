@@ -9,7 +9,9 @@ fn main() {
     let width = 597;
     let height = 400u64;
 
-    let file = env::args().nth(1).unwrap_or(String::from("/home/seb/library/movies/Blender Shorts/big-buck-bunny.avi"));
+    let file = env::args().nth(1).unwrap_or(String::from(
+        "/home/seb/library/movies/Blender Shorts/big-buck-bunny.avi",
+    ));
 
     let uri = format!("file://{}", file);
 
@@ -24,14 +26,32 @@ fn main() {
     let videoconvert = gst::ElementFactory::make("videoconvert", None).unwrap();
 
     let capsfilter = gst::ElementFactory::make("capsfilter", None).unwrap();
-    capsfilter.set_property("caps", &gst::Caps::new_simple("video/x-raw", &[("format", &"BGRx"), ("framerate", &gst::Fraction::new(1, 1)), ("width", &(1i32)), ("height", &(height as i32))]));
+    capsfilter.set_property(
+        "caps",
+        &gst::Caps::new_simple(
+            "video/x-raw",
+            &[
+                ("format", &"BGRx"),
+                ("framerate", &gst::Fraction::new(1, 1)),
+                ("width", &(1i32)),
+                ("height", &(height as i32)),
+            ],
+        ),
+    );
 
     let sink = gst::ElementFactory::make("appsink", None).unwrap();
 
     let pipeline = gst::Pipeline::new(None);
 
     pipeline
-        .add_many(&[&src, &videorate, &videoscale, &videoconvert, &capsfilter, &sink])
+        .add_many(&[
+            &src,
+            &videorate,
+            &videoscale,
+            &videoconvert,
+            &capsfilter,
+            &sink,
+        ])
         .unwrap();
     gst::Element::link_many(&[&videorate, &videoscale, &videoconvert, &capsfilter, &sink]).unwrap();
 
@@ -40,20 +60,32 @@ fn main() {
         .expect("Sink element is expected to be an appsink!");
     appsink.set_property("sync", &false);
 
-
     ///////////////////////////////////////////////////////////////////////
     let preview_pipeline = gst::Pipeline::new(None);
 
     let src2 = gst::ElementFactory::make("appsrc", None).unwrap();
 
     let capsfilter2 = gst::ElementFactory::make("capsfilter", None).unwrap();
-    capsfilter2.set_property("caps", &gst::Caps::new_simple("video/x-raw", &[("format", &"BGRx"), ("framerate", &gst::Fraction::new(1, 1)), ("width", &(width as i32)), ("height", &(height as i32))]));
+    capsfilter2.set_property(
+        "caps",
+        &gst::Caps::new_simple(
+            "video/x-raw",
+            &[
+                ("format", &"BGRx"),
+                ("framerate", &gst::Fraction::new(1, 1)),
+                ("width", &(width as i32)),
+                ("height", &(height as i32)),
+            ],
+        ),
+    );
     let videoconvert2 = gst::ElementFactory::make("videoconvert", None).unwrap();
 
     let sink2 = gst::ElementFactory::make("autovideosink", None).unwrap();
     sink2.set_property("sync", &false);
 
-    preview_pipeline.add_many(&[&src2, &capsfilter2, &videoconvert2, &sink2]).unwrap();
+    preview_pipeline
+        .add_many(&[&src2, &capsfilter2, &videoconvert2, &sink2])
+        .unwrap();
     gst::Element::link_many(&[&src2, &capsfilter2, &videoconvert2, &sink2]).unwrap();
 
     let appsrc = src2.clone()
@@ -67,7 +99,7 @@ fn main() {
         gst::StateChangeReturn::Failure => println!("failure"),
         gst::StateChangeReturn::Async => println!("async"),
         gst::StateChangeReturn::NoPreroll => println!("nopreroll"),
-        _ => println!("other")
+        _ => println!("other"),
     }
     ///////////////////////////////////////////////////////////////////////
     let output_pipeline = gst::Pipeline::new(None);
@@ -75,12 +107,25 @@ fn main() {
     let src3 = gst::ElementFactory::make("appsrc", None).unwrap();
 
     let capsfilter3 = gst::ElementFactory::make("capsfilter", None).unwrap();
-    capsfilter3.set_property("caps", &gst::Caps::new_simple("video/x-raw", &[("format", &"BGRx"), ("framerate", &gst::Fraction::new(1, 1)), ("width", &(width as i32)), ("height", &(height as i32))]));
+    capsfilter3.set_property(
+        "caps",
+        &gst::Caps::new_simple(
+            "video/x-raw",
+            &[
+                ("format", &"BGRx"),
+                ("framerate", &gst::Fraction::new(1, 1)),
+                ("width", &(width as i32)),
+                ("height", &(height as i32)),
+            ],
+        ),
+    );
 
     let jpegenc = gst::ElementFactory::make("jpegenc", None).unwrap();
     let filesink = gst::ElementFactory::make("filesink", None).unwrap();
     filesink.set_property("location", &"/tmp/nordlicht.jpg");
-    output_pipeline.add_many(&[&src3, &capsfilter3, &jpegenc, &filesink]).unwrap();
+    output_pipeline
+        .add_many(&[&src3, &capsfilter3, &jpegenc, &filesink])
+        .unwrap();
     gst::Element::link_many(&[&src3, &capsfilter3, &jpegenc, &filesink]).unwrap();
 
     let appsrc2 = src3.clone()
@@ -90,8 +135,6 @@ fn main() {
     appsrc2.set_property_block(true);
 
     ///////////////////////////////////////////////////////////////////////
-
-
 
     let pipeline_clone = pipeline.clone();
     let convert_clone = videorate.clone();
@@ -148,7 +191,20 @@ fn main() {
     let fps = gst::Fraction::new(width as i32, duration.seconds().unwrap() as i32);
     println!("fps: {}", fps);
 
-    capsfilter.set_property("caps", &gst::Caps::new_simple("video/x-raw", &[("format", &"BGRx"), ("framerate", &fps), ("width", &(1i32)), ("height", &(height as i32))])).unwrap();
+    capsfilter
+        .set_property(
+            "caps",
+            &gst::Caps::new_simple(
+                "video/x-raw",
+                &[
+                    ("format", &"BGRx"),
+                    ("framerate", &fps),
+                    ("width", &(1i32)),
+                    ("height", &(height as i32)),
+                ],
+            ),
+        )
+        .unwrap();
     //capsfilter2.set_property("caps", &gst::Caps::new_simple("video/x-raw", &[("format", &"BGRx"), ("framerate", &fps), ("width", &(width as i32)), ("height", &(height as i32))])).unwrap();
     //capsfilter3.set_property("caps", &gst::Caps::new_simple("video/x-raw", &[("format", &"BGRx"), ("framerate", &fps), ("width", &(width as i32)), ("height", &(height as i32))])).unwrap();
 
@@ -159,9 +215,9 @@ fn main() {
                 "Error received from element {:?}: {}",
                 err.get_src().map(|s| s.get_path_string()),
                 err.get_error()
-                );
+            );
             eprintln!("Debugging information: {:?}", err.get_debug());
-        },
+        }
         _ => (),
     });
     bus.add_signal_watch();
@@ -173,31 +229,29 @@ fn main() {
                 "Error received from element {:?}: {}",
                 err.get_src().map(|s| s.get_path_string()),
                 err.get_error()
-                );
+            );
             eprintln!("Debugging information: {:?}", err.get_debug());
-        },
+        }
         _ => (),
     });
     bus2.add_signal_watch();
 
     let bus3 = output_pipeline.get_bus().unwrap();
     bus3.connect_message(move |_, msg| match msg.view() {
-        gst::MessageView::Eos(_) => {
-            println!("got eos")
-        }
+        gst::MessageView::Eos(_) => println!("got eos"),
         gst::MessageView::Error(err) => {
             eprintln!(
                 "Error received from element {:?}: {}",
                 err.get_src().map(|s| s.get_path_string()),
                 err.get_error()
-                );
+            );
             eprintln!("Debugging information: {:?}", err.get_debug());
-        },
+        }
         _ => (),
     });
     bus3.add_signal_watch();
 
-    let mut outbuffer = gst::Buffer::with_size((width*height*4) as usize).unwrap();
+    let mut outbuffer = gst::Buffer::with_size((width * height * 4) as usize).unwrap();
 
     loop {
         let sample = match appsink.pull_sample() {
@@ -208,24 +262,24 @@ fn main() {
                     gst::StateChangeReturn::Failure => println!("failure"),
                     gst::StateChangeReturn::Async => println!("async"),
                     gst::StateChangeReturn::NoPreroll => println!("nopreroll"),
-                    _ => println!("other")
+                    _ => println!("other"),
                 }
                 match appsrc2.push_buffer(outbuffer.copy_deep().unwrap()) {
                     gst::FlowReturn::Ok => println!("ok"),
                     gst::FlowReturn::Flushing => println!("flushing"),
                     gst::FlowReturn::Eos => println!("eos"),
-                    _ => println!("other")
+                    _ => println!("other"),
                 }
                 match appsrc2.end_of_stream() {
                     gst::FlowReturn::Ok => println!("ok"),
                     gst::FlowReturn::Flushing => println!("flushing"),
                     gst::FlowReturn::Eos => println!("eos"),
-                    _ => println!("other")
+                    _ => println!("other"),
                 }
                 //let ret3 = output_pipeline.set_state(gst::State::Null);
                 //assert_ne!(ret3, gst::StateChangeReturn::Failure);
                 //output_pipeline.get_state(10 * gst::SECOND);
-                break
+                break;
             }
             Some(sample) => sample,
         };
@@ -249,7 +303,10 @@ fn main() {
         let indata = map.as_slice();
 
         let pts: gst::ClockTime = buffer.get_pts();
-        let i = cmp::min((width*pts.nseconds().unwrap()/duration.nseconds().unwrap()), width-1);
+        let i = cmp::min(
+            (width * pts.nseconds().unwrap() / duration.nseconds().unwrap()),
+            width - 1,
+        );
 
         {
             let outbuffer = outbuffer.get_mut().unwrap();
@@ -257,8 +314,9 @@ fn main() {
             let mut data = outbuffer.map_writable().unwrap();
 
             for y in 0..height {
-                let mut dst = &mut data[(width*y*4+i*4) as usize..(width*y*4+i*4+3) as usize];
-                let src = &indata[(y*4) as usize..(y*4+3) as usize];
+                let mut dst = &mut data
+                    [(width * y * 4 + i * 4) as usize..(width * y * 4 + i * 4 + 3) as usize];
+                let src = &indata[(y * 4) as usize..(y * 4 + 3) as usize];
                 dst.copy_from_slice(src);
             }
         }
@@ -267,7 +325,7 @@ fn main() {
             gst::FlowReturn::Ok => println!("ok"),
             gst::FlowReturn::Flushing => println!("flushing"),
             gst::FlowReturn::Eos => println!("eos"),
-            _ => println!("other")
+            _ => println!("other"),
         }
     }
 
