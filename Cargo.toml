@@ -7,3 +7,6 @@ authors = ["Sebastian Morr <sebastian@morr.cc>"]
 gstreamer = "0.11.0"
 gstreamer-app = "0.11.0"
 clap = "2.31.2"
+
+[dev-dependencies]
+assert_cli = "0.5"
