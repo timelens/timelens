@@ -6,6 +6,9 @@ extern crate gstreamer_app as gst_app;
 use gst::prelude::*;
 use std::cmp;
 
+use std::io::Write;
+use std::io::stdout;
+
 #[derive(Debug)]
 struct Config {
     width: u64,
@@ -166,10 +169,10 @@ fn build_input_pipeline(config: &Config) -> (gst::Pipeline, gst::Element, gst_ap
 fn build_output_pipeline(config: &Config) -> (gst::Pipeline, gst_app::AppSrc) {
     let output_pipeline = gst::Pipeline::new(None);
 
-    let src3 = gst::ElementFactory::make("appsrc", None).unwrap();
+    let src = gst::ElementFactory::make("appsrc", None).unwrap();
 
-    let capsfilter3 = gst::ElementFactory::make("capsfilter", None).unwrap();
-    capsfilter3
+    let capsfilter = gst::ElementFactory::make("capsfilter", None).unwrap();
+    capsfilter
         .set_property(
             "caps",
             &gst::Caps::new_simple(
@@ -190,26 +193,26 @@ fn build_output_pipeline(config: &Config) -> (gst::Pipeline, gst_app::AppSrc) {
         .set_property("location", &config.output_filename)
         .unwrap();
     output_pipeline
-        .add_many(&[&src3, &capsfilter3, &jpegenc, &filesink])
+        .add_many(&[&src, &capsfilter, &jpegenc, &filesink])
         .unwrap();
-    gst::Element::link_many(&[&src3, &capsfilter3, &jpegenc, &filesink]).unwrap();
+    gst::Element::link_many(&[&src, &capsfilter, &jpegenc, &filesink]).unwrap();
 
-    let appsrc2 = src3.clone()
+    let appsrc = src.clone()
         .dynamic_cast::<gst_app::AppSrc>()
         .expect("Sink element is expected to be an appsrc!");
-    appsrc2.set_property_format(gst::Format::Time);
-    appsrc2.set_property_block(true);
+    appsrc.set_property_format(gst::Format::Time);
+    appsrc.set_property_block(true);
 
-    (output_pipeline, appsrc2)
+    (output_pipeline, appsrc)
 }
 
 fn build_preview_pipeline(config: &Config) -> (gst::Pipeline, gst_app::AppSrc) {
     let preview_pipeline = gst::Pipeline::new(None);
 
-    let src2 = gst::ElementFactory::make("appsrc", None).unwrap();
+    let src = gst::ElementFactory::make("appsrc", None).unwrap();
 
-    let capsfilter2 = gst::ElementFactory::make("capsfilter", None).unwrap();
-    capsfilter2
+    let capsfilter = gst::ElementFactory::make("capsfilter", None).unwrap();
+    capsfilter
         .set_property(
             "caps",
             &gst::Caps::new_simple(
@@ -223,17 +226,17 @@ fn build_preview_pipeline(config: &Config) -> (gst::Pipeline, gst_app::AppSrc) {
             ),
         )
         .unwrap();
-    let videoconvert2 = gst::ElementFactory::make("videoconvert", None).unwrap();
+    let videoconvert = gst::ElementFactory::make("videoconvert", None).unwrap();
 
-    let sink2 = gst::ElementFactory::make("autovideosink", None).unwrap();
-    sink2.set_property("sync", &false).unwrap();
+    let sink = gst::ElementFactory::make("autovideosink", None).unwrap();
+    sink.set_property("sync", &false).unwrap();
 
     preview_pipeline
-        .add_many(&[&src2, &capsfilter2, &videoconvert2, &sink2])
+        .add_many(&[&src, &capsfilter, &videoconvert, &sink])
         .unwrap();
-    gst::Element::link_many(&[&src2, &capsfilter2, &videoconvert2, &sink2]).unwrap();
+    gst::Element::link_many(&[&src, &capsfilter, &videoconvert, &sink]).unwrap();
 
-    let appsrc = src2.clone()
+    let appsrc = src.clone()
         .dynamic_cast::<gst_app::AppSrc>()
         .expect("Sink element is expected to be an appsrc!");
     appsrc.set_property_format(gst::Format::Time);
@@ -272,6 +275,22 @@ fn main() {
     let fps = gst::Fraction::new(config.width as i32, duration.seconds().unwrap() as i32);
     println!("fps: {}", fps);
 
+    for pipeline in [&input_pipeline, &output_pipeline, &preview_pipeline].iter() {
+        let bus = pipeline.get_bus().unwrap();
+        bus.connect_message(move |_, msg| match msg.view() {
+            gst::MessageView::Error(err) => {
+                eprintln!(
+                    "Error received from element {:?}: {}",
+                    err.get_src().map(|s| s.get_path_string()),
+                    err.get_error()
+                    );
+                eprintln!("Debugging information: {:?}", err.get_debug());
+            }
+            _ => (),
+        });
+        bus.add_signal_watch();
+    }
+
     capsfilter
         .set_property(
             "caps",
@@ -286,51 +305,6 @@ fn main() {
             ),
         )
         .unwrap();
-    //capsfilter2.set_property("caps", &gst::Caps::new_simple("video/x-raw", &[("format", &"BGRx"), ("framerate", &fps), ("width", &(width as i32)), ("height", &(height as i32))])).unwrap();
-    //capsfilter3.set_property("caps", &gst::Caps::new_simple("video/x-raw", &[("format", &"BGRx"), ("framerate", &fps), ("width", &(width as i32)), ("height", &(height as i32))])).unwrap();
-
-    let bus = input_pipeline.get_bus().unwrap();
-    bus.connect_message(move |_, msg| match msg.view() {
-        gst::MessageView::Error(err) => {
-            eprintln!(
-                "Error received from element {:?}: {}",
-                err.get_src().map(|s| s.get_path_string()),
-                err.get_error()
-            );
-            eprintln!("Debugging information: {:?}", err.get_debug());
-        }
-        _ => (),
-    });
-    bus.add_signal_watch();
-
-    let bus2 = preview_pipeline.get_bus().unwrap();
-    bus2.connect_message(move |_, msg| match msg.view() {
-        gst::MessageView::Error(err) => {
-            eprintln!(
-                "Error received from element {:?}: {}",
-                err.get_src().map(|s| s.get_path_string()),
-                err.get_error()
-            );
-            eprintln!("Debugging information: {:?}", err.get_debug());
-        }
-        _ => (),
-    });
-    bus2.add_signal_watch();
-
-    let bus3 = output_pipeline.get_bus().unwrap();
-    bus3.connect_message(move |_, msg| match msg.view() {
-        gst::MessageView::Eos(_) => println!("got eos"),
-        gst::MessageView::Error(err) => {
-            eprintln!(
-                "Error received from element {:?}: {}",
-                err.get_src().map(|s| s.get_path_string()),
-                err.get_error()
-            );
-            eprintln!("Debugging information: {:?}", err.get_debug());
-        }
-        _ => (),
-    });
-    bus3.add_signal_watch();
 
     let mut outbuffer =
         gst::Buffer::with_size((config.width * config.height * 4) as usize).unwrap();
@@ -338,49 +312,16 @@ fn main() {
     loop {
         let sample = match appsink.pull_sample() {
             None => {
-                println!("got none");
-                match output_pipeline.set_state(gst::State::Playing) {
-                    gst::StateChangeReturn::Success => println!("success"),
-                    gst::StateChangeReturn::Failure => println!("failure"),
-                    gst::StateChangeReturn::Async => println!("async"),
-                    gst::StateChangeReturn::NoPreroll => println!("nopreroll"),
-                    _ => println!("other"),
-                }
-                match output_src.push_buffer(outbuffer.copy_deep().unwrap()) {
-                    gst::FlowReturn::Ok => println!("ok"),
-                    gst::FlowReturn::Flushing => println!("flushing"),
-                    gst::FlowReturn::Eos => println!("eos"),
-                    _ => println!("other"),
-                }
-                match output_src.end_of_stream() {
-                    gst::FlowReturn::Ok => println!("ok"),
-                    gst::FlowReturn::Flushing => println!("flushing"),
-                    gst::FlowReturn::Eos => println!("eos"),
-                    _ => println!("other"),
-                }
-                //let ret3 = output_pipeline.set_state(gst::State::Null);
-                //assert_ne!(ret3, gst::StateChangeReturn::Failure);
-                //output_pipeline.get_state(10 * gst::SECOND);
+                output_pipeline.set_state(gst::State::Playing).into_result().unwrap();
+                output_src.push_buffer(outbuffer.copy_deep().unwrap()).into_result().unwrap();
+                output_src.end_of_stream().into_result().unwrap();
                 break;
             }
             Some(sample) => sample,
         };
 
-        let buffer = if let Some(buffer) = sample.get_buffer() {
-            let pts = buffer.get_pts();
-            println!("{}", pts);
-
-            buffer
-        } else {
-            return;
-        };
-
-        let map = if let Some(map) = buffer.map_readable() {
-            map
-        } else {
-            return;
-        };
-
+        let buffer = sample.get_buffer().unwrap();
+        let map = buffer.map_readable().unwrap();
         let indata = map.as_slice();
 
         let pts: gst::ClockTime = buffer.get_pts();
@@ -388,6 +329,10 @@ fn main() {
             (config.width * pts.nseconds().unwrap() / duration.nseconds().unwrap()),
             config.width - 1,
         );
+
+        let progress = 100*pts.nseconds().unwrap() / duration.nseconds().unwrap();
+        print!("\rnordlicht: {}%", progress);
+        stdout().flush().unwrap();
 
         {
             let outbuffer = outbuffer.get_mut().unwrap();
@@ -421,10 +366,7 @@ fn main() {
             .unwrap();
     }
 
-    let ret = input_pipeline.set_state(gst::State::Null);
-    assert_ne!(ret, gst::StateChangeReturn::Failure);
-    let ret2 = preview_pipeline.set_state(gst::State::Null);
-    assert_ne!(ret2, gst::StateChangeReturn::Failure);
-    let ret3 = output_pipeline.set_state(gst::State::Null);
-    assert_ne!(ret3, gst::StateChangeReturn::Failure);
+    input_pipeline.set_state(gst::State::Null).into_result().unwrap();
+    preview_pipeline.set_state(gst::State::Null).into_result().unwrap();
+    output_pipeline.set_state(gst::State::Null).into_result().unwrap();
 }
