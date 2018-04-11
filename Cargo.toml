@@ -4,11 +4,6 @@ version = "0.1.0"
 authors = ["Sebastian Morr <sebastian@morr.cc>"]
 
 [dependencies]
-glib = "0.5.0"
 gstreamer = "0.11.0"
 gstreamer-app = "0.11.0"
-gstreamer-video = "0.11.0"
-image = "*"
-failure = "0.1.1"
-failure_derive = "0.1.1"
 clap = "2.31.2"

@@ -1,9 +1,11 @@
+#[macro_use]
 extern crate clap;
-use clap::{App, Arg};
-extern crate glib;
+use clap::Arg;
+
 extern crate gstreamer as gst;
 extern crate gstreamer_app as gst_app;
 use gst::prelude::*;
+
 use std::cmp;
 
 use std::io::Write;
@@ -19,8 +21,7 @@ struct Config {
 }
 
 fn parse_config() -> Config {
-    let matches = App::new("nordlicht")
-        .author("Sebastian Morr <sebastian@morr.cc>")
+    let matches = app_from_crate!()
         .arg(Arg::with_name("input").help("Input file").index(1))
         .arg(
             Arg::with_name("width")
