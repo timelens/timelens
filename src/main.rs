@@ -13,11 +13,11 @@ use std::io::stdout;
 
 #[derive(Debug)]
 struct Config {
-    width: u64,
-    height: u64,
+    width: usize,
+    height: usize,
     input_filename: String,
     output_filename: String,
-    tmp_width: u64,
+    tmp_width: usize,
     preview: bool,
     seek_mode: bool,
 }
@@ -56,10 +56,10 @@ fn parse_config() -> Config {
         .get_matches();
 
     let width_string = matches.value_of("width").unwrap_or("1000");
-    let width: u64 = width_string.parse().expect("Invalid width");
+    let width: usize = width_string.parse().expect("Invalid width");
 
     let height_string = matches.value_of("height").unwrap_or("100");
-    let height: u64 = height_string.parse().expect("Invalid height");
+    let height: usize = height_string.parse().expect("Invalid height");
 
     let input_filename = matches
         .value_of("input")
@@ -259,10 +259,9 @@ fn generate_timeline(
     preview_src: &gst_app::AppSrc,
     duration: &gst::ClockTime,
 ) -> gst::Buffer {
-    let mut outbuffer =
-        gst::Buffer::with_size((config.width * config.height * 4) as usize).unwrap();
+    let mut outbuffer = gst::Buffer::with_size(config.width * config.height * 4).unwrap();
 
-    let mut done = vec![0; config.width as usize];
+    let mut done = vec![0; config.width];
 
     let mut next_column = 0;
 
@@ -282,7 +281,8 @@ fn generate_timeline(
 
         let pts: gst::ClockTime = buffer.get_pts();
         let i = cmp::min(
-            (config.width * pts.nseconds().unwrap() / duration.nseconds().unwrap()),
+            (config.width * (pts.nseconds().unwrap() as usize)
+                / (duration.nseconds().unwrap() as usize)),
             config.width - 1,
         );
 
@@ -296,24 +296,24 @@ fn generate_timeline(
             let mut data = outbuffer.map_writable().unwrap();
 
             for y in 0..config.height {
-                let mut r: u64 = 0;
-                let mut g: u64 = 0;
-                let mut b: u64 = 0;
+                let mut r: usize = 0;
+                let mut g: usize = 0;
+                let mut b: usize = 0;
 
                 for x in 0..config.tmp_width {
-                    r += indata[(config.tmp_width * y * 4 + 4 * x + 0) as usize] as u64;
-                    g += indata[(config.tmp_width * y * 4 + 4 * x + 1) as usize] as u64;
-                    b += indata[(config.tmp_width * y * 4 + 4 * x + 2) as usize] as u64;
+                    r += indata[config.tmp_width * y * 4 + 4 * x + 0] as usize;
+                    g += indata[config.tmp_width * y * 4 + 4 * x + 1] as usize;
+                    b += indata[config.tmp_width * y * 4 + 4 * x + 2] as usize;
                 }
 
                 r /= config.tmp_width;
                 g /= config.tmp_width;
                 b /= config.tmp_width;
 
-                data[(config.width * y * 4 + i * 4 + 0) as usize] = r as u8;
-                data[(config.width * y * 4 + i * 4 + 1) as usize] = g as u8;
-                data[(config.width * y * 4 + i * 4 + 2) as usize] = b as u8;
-                data[(config.width * y * 4 + i * 4 + 3) as usize] = 255;
+                data[config.width * y * 4 + i * 4 + 0] = r as u8;
+                data[config.width * y * 4 + i * 4 + 1] = g as u8;
+                data[config.width * y * 4 + i * 4 + 2] = b as u8;
+                data[config.width * y * 4 + i * 4 + 3] = 255;
             }
         }
 
@@ -340,12 +340,12 @@ fn generate_timeline(
         if config.seek_mode {
             next_column += 1;
 
-            let j = duration.nseconds().unwrap() / config.width * next_column;
+            let j = (duration.nseconds().unwrap() as usize) / config.width * next_column;
 
             input_pipeline
                 .seek_simple(
                     gst::SeekFlags::FLUSH, // | gst::SeekFlags::KEY_UNIT,
-                    j * gst::NSECOND,
+                    (j as u64) * gst::NSECOND,
                 )
                 .unwrap();
         }
