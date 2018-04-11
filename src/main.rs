@@ -45,17 +45,17 @@ fn parse_config() -> Config {
         )
         .get_matches();
 
-    let width_string = matches.value_of("width").unwrap_or("1920");
+    let width_string = matches.value_of("width").unwrap_or("1000");
     let width: u64 = width_string.parse().expect("Invalid width");
 
-    let height_string = matches.value_of("height").unwrap_or("192");
+    let height_string = matches.value_of("height").unwrap_or("100");
     let height: u64 = height_string.parse().expect("Invalid height");
 
     let input_filename = matches
         .value_of("input")
         .unwrap_or("/home/seb/library/movies/Blender Shorts/big-buck-bunny.avi");
 
-    let fallback_output = format!("{}.nordlicht.jpg", &input_filename);
+    let fallback_output = format!("{}.nordlicht.png", &input_filename);
     let output_filename = matches.value_of("output").unwrap_or(&fallback_output);
 
     Config {
@@ -63,7 +63,7 @@ fn parse_config() -> Config {
         height: height,
         input_filename: String::from(input_filename),
         output_filename: String::from(output_filename),
-        tmp_width: 100,
+        tmp_width: 400,
     }
 }
 
@@ -85,7 +85,7 @@ fn build_input_pipeline(config: &Config) -> (gst::Pipeline, gst::Element, gst_ap
             &gst::Caps::new_simple(
                 "video/x-raw",
                 &[
-                    ("format", &"BGRx"),
+                    ("format", &"RGBA"),
                     ("framerate", &gst::Fraction::new(1, 1)),
                     ("width", &(config.tmp_width as i32)),
                     ("height", &(config.height as i32)),
@@ -178,7 +178,7 @@ fn build_output_pipeline(config: &Config) -> (gst::Pipeline, gst_app::AppSrc) {
             &gst::Caps::new_simple(
                 "video/x-raw",
                 &[
-                    ("format", &"BGRx"),
+                    ("format", &"RGBA"),
                     ("framerate", &gst::Fraction::new(1, 1)),
                     ("width", &(config.width as i32)),
                     ("height", &(config.height as i32)),
@@ -187,15 +187,15 @@ fn build_output_pipeline(config: &Config) -> (gst::Pipeline, gst_app::AppSrc) {
         )
         .unwrap();
 
-    let jpegenc = gst::ElementFactory::make("jpegenc", None).unwrap();
+    let pngenc = gst::ElementFactory::make("pngenc", None).unwrap();
     let filesink = gst::ElementFactory::make("filesink", None).unwrap();
     filesink
         .set_property("location", &config.output_filename)
         .unwrap();
     output_pipeline
-        .add_many(&[&src, &capsfilter, &jpegenc, &filesink])
+        .add_many(&[&src, &capsfilter, &pngenc, &filesink])
         .unwrap();
-    gst::Element::link_many(&[&src, &capsfilter, &jpegenc, &filesink]).unwrap();
+    gst::Element::link_many(&[&src, &capsfilter, &pngenc, &filesink]).unwrap();
 
     let appsrc = src.clone()
         .dynamic_cast::<gst_app::AppSrc>()
@@ -218,7 +218,7 @@ fn build_preview_pipeline(config: &Config) -> (gst::Pipeline, gst_app::AppSrc) {
             &gst::Caps::new_simple(
                 "video/x-raw",
                 &[
-                    ("format", &"BGRx"),
+                    ("format", &"RGBA"),
                     ("framerate", &gst::Fraction::new(1, 1)),
                     ("width", &(config.width as i32)),
                     ("height", &(config.height as i32)),
@@ -242,13 +242,10 @@ fn build_preview_pipeline(config: &Config) -> (gst::Pipeline, gst_app::AppSrc) {
     appsrc.set_property_format(gst::Format::Time);
     appsrc.set_property_block(true);
 
-    match preview_pipeline.set_state(gst::State::Playing) {
-        gst::StateChangeReturn::Success => println!("success"),
-        gst::StateChangeReturn::Failure => println!("failure"),
-        gst::StateChangeReturn::Async => println!("async"),
-        gst::StateChangeReturn::NoPreroll => println!("nopreroll"),
-        _ => println!("other"),
-    }
+    preview_pipeline
+        .set_state(gst::State::Playing)
+        .into_result()
+        .unwrap();
 
     (preview_pipeline, appsrc)
 }
@@ -297,7 +294,7 @@ fn main() {
             &gst::Caps::new_simple(
                 "video/x-raw",
                 &[
-                    ("format", &"BGRx"),
+                    ("format", &"RGBA"),
                     ("framerate", &fps),
                     ("width", &(config.tmp_width as i32)),
                     ("height", &(config.height as i32)),
@@ -346,23 +343,24 @@ fn main() {
             let mut data = outbuffer.map_writable().unwrap();
 
             for y in 0..config.height {
-                let mut b: u64 = 0;
-                let mut g: u64 = 0;
                 let mut r: u64 = 0;
+                let mut g: u64 = 0;
+                let mut b: u64 = 0;
 
                 for x in 0..config.tmp_width {
-                    b += indata[(config.tmp_width * y * 4 + 4 * x + 0) as usize] as u64;
+                    r += indata[(config.tmp_width * y * 4 + 4 * x + 0) as usize] as u64;
                     g += indata[(config.tmp_width * y * 4 + 4 * x + 1) as usize] as u64;
-                    r += indata[(config.tmp_width * y * 4 + 4 * x + 2) as usize] as u64;
+                    b += indata[(config.tmp_width * y * 4 + 4 * x + 2) as usize] as u64;
                 }
 
-                b /= config.tmp_width;
-                g /= config.tmp_width;
                 r /= config.tmp_width;
+                g /= config.tmp_width;
+                b /= config.tmp_width;
 
-                data[(config.width * y * 4 + i * 4 + 0) as usize] = b as u8;
+                data[(config.width * y * 4 + i * 4 + 0) as usize] = r as u8;
                 data[(config.width * y * 4 + i * 4 + 1) as usize] = g as u8;
-                data[(config.width * y * 4 + i * 4 + 2) as usize] = r as u8;
+                data[(config.width * y * 4 + i * 4 + 2) as usize] = b as u8;
+                data[(config.width * y * 4 + i * 4 + 3) as usize] = 255;
             }
         }
 
