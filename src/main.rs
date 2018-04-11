@@ -18,6 +18,7 @@ struct Config {
     input_filename: String,
     output_filename: String,
     tmp_width: u64,
+    preview: bool,
 }
 
 fn parse_config() -> Config {
@@ -44,6 +45,12 @@ fn parse_config() -> Config {
                 .long("output")
                 .takes_value(true),
         )
+        .arg(
+            Arg::with_name("preview")
+                .help("Open a preview window")
+                .short("p")
+                .long("preview"),
+        )
         .get_matches();
 
     let width_string = matches.value_of("width").unwrap_or("1000");
@@ -65,6 +72,7 @@ fn parse_config() -> Config {
         input_filename: String::from(input_filename),
         output_filename: String::from(output_filename),
         tmp_width: 400,
+        preview: matches.is_present("preview"),
     }
 }
 
@@ -117,23 +125,15 @@ fn build_input_pipeline(config: &Config) -> (gst::Pipeline, gst::Element, gst_ap
         .expect("Sink element is expected to be an appsink!");
     appsink.set_property("sync", &false).unwrap();
 
-    let pipeline_clone = pipeline.clone();
     let convert_clone = videorate.clone();
     src.connect_pad_added(move |_, src_pad| {
-        let pipeline = &pipeline_clone;
         let convert = &convert_clone;
-
-        println!(
-            "Received new pad {} from {}",
-            src_pad.get_name(),
-            pipeline.get_name()
-        );
 
         let sink_pad = convert
             .get_static_pad("sink")
             .expect("Failed to get static sink pad from convert");
         if sink_pad.is_linked() {
-            println!("We are already linked. Ignoring.");
+            // We are already linked. Ignoring.
             return;
         }
 
@@ -159,8 +159,6 @@ fn build_input_pipeline(config: &Config) -> (gst::Pipeline, gst::Element, gst_ap
         let ret = src_pad.link(&sink_pad);
         if ret != gst::PadLinkReturn::Ok {
             println!("Type is {} but link failed.", new_pad_type);
-        } else {
-            println!("Link succeeded (type {}).", new_pad_type);
         }
     });
 
@@ -251,76 +249,18 @@ fn build_preview_pipeline(config: &Config) -> (gst::Pipeline, gst_app::AppSrc) {
     (preview_pipeline, appsrc)
 }
 
-fn main() {
-    let config = parse_config();
-    println!("{:#?}", config);
-
-    // Initialize GStreamer
-    gst::init().unwrap();
-
-    let (input_pipeline, capsfilter, appsink) = build_input_pipeline(&config);
-    let (output_pipeline, output_src) = build_output_pipeline(&config);
-    let (preview_pipeline, preview_src) = build_preview_pipeline(&config);
-
-    input_pipeline
-        .set_state(gst::State::Playing)
-        .into_result()
-        .unwrap();
-
-    input_pipeline.get_state(10 * gst::SECOND);
-
-    let duration: gst::ClockTime = input_pipeline.query_duration().unwrap();
-    let fps = gst::Fraction::new(config.width as i32, duration.seconds().unwrap() as i32);
-    println!("fps: {}", fps);
-
-    for pipeline in [&input_pipeline, &output_pipeline, &preview_pipeline].iter() {
-        let bus = pipeline.get_bus().unwrap();
-        bus.connect_message(move |_, msg| match msg.view() {
-            gst::MessageView::Error(err) => {
-                eprintln!(
-                    "Error received from element {:?}: {}",
-                    err.get_src().map(|s| s.get_path_string()),
-                    err.get_error()
-                );
-                eprintln!("Debugging information: {:?}", err.get_debug());
-            }
-            _ => (),
-        });
-        bus.add_signal_watch();
-    }
-
-    capsfilter
-        .set_property(
-            "caps",
-            &gst::Caps::new_simple(
-                "video/x-raw",
-                &[
-                    ("format", &"RGBA"),
-                    ("framerate", &fps),
-                    ("width", &(config.tmp_width as i32)),
-                    ("height", &(config.height as i32)),
-                ],
-            ),
-        )
-        .unwrap();
-
+fn generate_timeline(
+    config: Config,
+    appsink: &gst_app::AppSink,
+    preview_src: &gst_app::AppSrc,
+    duration: &gst::ClockTime,
+) -> gst::Buffer {
     let mut outbuffer =
         gst::Buffer::with_size((config.width * config.height * 4) as usize).unwrap();
 
     loop {
         let sample = match appsink.pull_sample() {
-            None => {
-                output_pipeline
-                    .set_state(gst::State::Playing)
-                    .into_result()
-                    .unwrap();
-                output_src
-                    .push_buffer(outbuffer.copy_deep().unwrap())
-                    .into_result()
-                    .unwrap();
-                output_src.end_of_stream().into_result().unwrap();
-                break;
-            }
+            None => return outbuffer,
             Some(sample) => sample,
         };
 
@@ -365,11 +305,78 @@ fn main() {
             }
         }
 
-        preview_src
-            .push_buffer(outbuffer.copy_deep().unwrap())
-            .into_result()
-            .unwrap();
+        if config.preview {
+            preview_src
+                .push_buffer(outbuffer.copy_deep().unwrap())
+                .into_result()
+                .unwrap();
+        }
     }
+}
+
+fn main() {
+    let config = parse_config();
+    println!("{:#?}", config);
+
+    // Initialize GStreamer
+    gst::init().unwrap();
+
+    let (input_pipeline, capsfilter, appsink) = build_input_pipeline(&config);
+    let (output_pipeline, output_src) = build_output_pipeline(&config);
+    let (preview_pipeline, preview_src) = build_preview_pipeline(&config);
+
+    input_pipeline
+        .set_state(gst::State::Playing)
+        .into_result()
+        .unwrap();
+
+    input_pipeline.get_state(10 * gst::SECOND);
+
+    let duration: gst::ClockTime = input_pipeline.query_duration().unwrap();
+    let fps = gst::Fraction::new(config.width as i32, duration.seconds().unwrap() as i32);
+
+    for pipeline in [&input_pipeline, &output_pipeline, &preview_pipeline].iter() {
+        let bus = pipeline.get_bus().unwrap();
+        bus.connect_message(move |_, msg| match msg.view() {
+            gst::MessageView::Error(err) => {
+                eprintln!(
+                    "Error received from element {:?}: {}",
+                    err.get_src().map(|s| s.get_path_string()),
+                    err.get_error()
+                );
+                eprintln!("Debugging information: {:?}", err.get_debug());
+            }
+            _ => (),
+        });
+        bus.add_signal_watch();
+    }
+
+    capsfilter
+        .set_property(
+            "caps",
+            &gst::Caps::new_simple(
+                "video/x-raw",
+                &[
+                    ("format", &"RGBA"),
+                    ("framerate", &fps),
+                    ("width", &(config.tmp_width as i32)),
+                    ("height", &(config.height as i32)),
+                ],
+            ),
+        )
+        .unwrap();
+
+    let outbuffer = generate_timeline(config, &appsink, &preview_src, &duration);
+
+    output_pipeline
+        .set_state(gst::State::Playing)
+        .into_result()
+        .unwrap();
+    output_src
+        .push_buffer(outbuffer.copy_deep().unwrap())
+        .into_result()
+        .unwrap();
+    output_src.end_of_stream().into_result().unwrap();
 
     input_pipeline
         .set_state(gst::State::Null)
