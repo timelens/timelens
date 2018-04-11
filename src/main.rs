@@ -19,6 +19,7 @@ struct Config {
     output_filename: String,
     tmp_width: u64,
     preview: bool,
+    seek_mode: bool,
 }
 
 fn parse_config() -> Config {
@@ -51,6 +52,7 @@ fn parse_config() -> Config {
                 .short("p")
                 .long("preview"),
         )
+        .arg(Arg::with_name("seek").help("Allow seeking").long("seek"))
         .get_matches();
 
     let width_string = matches.value_of("width").unwrap_or("1000");
@@ -73,6 +75,7 @@ fn parse_config() -> Config {
         output_filename: String::from(output_filename),
         tmp_width: 400,
         preview: matches.is_present("preview"),
+        seek_mode: matches.is_present("seek"),
     }
 }
 
@@ -250,7 +253,8 @@ fn build_preview_pipeline(config: &Config) -> (gst::Pipeline, gst_app::AppSrc) {
 }
 
 fn generate_timeline(
-    config: Config,
+    config: &Config,
+    input_pipeline: &gst::Pipeline,
     appsink: &gst_app::AppSink,
     preview_src: &gst_app::AppSrc,
     duration: &gst::ClockTime,
@@ -258,9 +262,17 @@ fn generate_timeline(
     let mut outbuffer =
         gst::Buffer::with_size((config.width * config.height * 4) as usize).unwrap();
 
+    let mut done = vec![0; config.width as usize];
+
+    let mut next_column = 0;
+
     loop {
         let sample = match appsink.pull_sample() {
-            None => return outbuffer,
+            None => {
+                // we are probably at the end
+                println!("eos?");
+                return outbuffer;
+            }
             Some(sample) => sample,
         };
 
@@ -275,7 +287,7 @@ fn generate_timeline(
         );
 
         let progress = 100 * pts.nseconds().unwrap() / duration.nseconds().unwrap();
-        print!("\rnordlicht: {}%", progress);
+        print!("\rnordlicht: {}% ", progress);
         stdout().flush().unwrap();
 
         {
@@ -311,6 +323,32 @@ fn generate_timeline(
                 .into_result()
                 .unwrap();
         }
+
+        done[i as usize] += 1;
+
+        for n in &done {
+            print!("{}", n);
+            stdout().flush().unwrap();
+        }
+
+        if !done.contains(&0) {
+            // we are done
+            println!("done!");
+            return outbuffer;
+        }
+
+        if config.seek_mode {
+            next_column += 1;
+
+            let j = duration.nseconds().unwrap() / config.width * next_column;
+
+            input_pipeline
+                .seek_simple(
+                    gst::SeekFlags::FLUSH | gst::SeekFlags::KEY_UNIT,
+                    j * gst::NSECOND,
+                )
+                .unwrap();
+        }
     }
 }
 
@@ -332,8 +370,30 @@ fn main() {
 
     input_pipeline.get_state(10 * gst::SECOND);
 
+    if !config.seek_mode {
+        input_pipeline
+            .set_state(gst::State::Playing)
+            .into_result()
+            .unwrap();
+    }
+
     let duration: gst::ClockTime = input_pipeline.query_duration().unwrap();
     let fps = gst::Fraction::new(config.width as i32, duration.seconds().unwrap() as i32);
+
+    capsfilter
+        .set_property(
+            "caps",
+            &gst::Caps::new_simple(
+                "video/x-raw",
+                &[
+                    ("format", &"RGBA"),
+                    ("framerate", &fps),
+                    ("width", &(config.tmp_width as i32)),
+                    ("height", &(config.height as i32)),
+                ],
+            ),
+        )
+        .unwrap();
 
     for pipeline in [&input_pipeline, &output_pipeline, &preview_pipeline].iter() {
         let bus = pipeline.get_bus().unwrap();
@@ -351,22 +411,7 @@ fn main() {
         bus.add_signal_watch();
     }
 
-    capsfilter
-        .set_property(
-            "caps",
-            &gst::Caps::new_simple(
-                "video/x-raw",
-                &[
-                    ("format", &"RGBA"),
-                    ("framerate", &fps),
-                    ("width", &(config.tmp_width as i32)),
-                    ("height", &(config.height as i32)),
-                ],
-            ),
-        )
-        .unwrap();
-
-    let outbuffer = generate_timeline(config, &appsink, &preview_src, &duration);
+    let outbuffer = generate_timeline(&config, &input_pipeline, &appsink, &preview_src, &duration);
 
     output_pipeline
         .set_state(gst::State::Playing)
@@ -377,6 +422,8 @@ fn main() {
         .into_result()
         .unwrap();
     output_src.end_of_stream().into_result().unwrap();
+
+    println!("-> '{}'", config.output_filename);
 
     input_pipeline
         .set_state(gst::State::Null)
