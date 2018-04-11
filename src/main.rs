@@ -12,6 +12,7 @@ struct Config {
     height: u64,
     input_filename: String,
     output_filename: String,
+    tmp_width: u64,
 }
 
 fn parse_config() -> Config {
@@ -43,21 +44,9 @@ fn parse_config() -> Config {
 
     let width_string = matches.value_of("width").unwrap_or("1920");
     let width: u64 = width_string.parse().expect("Invalid width");
-    //    Ok(w) => w,
-    //    Err(_) => {
-    //        eprintln!("'{}' is not a valid width", width_string);
-    //        return
-    //    }
-    //};
 
     let height_string = matches.value_of("height").unwrap_or("192");
     let height: u64 = height_string.parse().expect("Invalid height");
-    //    Ok(w) => w,
-    //    Err(_) => {
-    //        eprintln!("'{}' is not a valid height", height_string);
-    //        return
-    //    }
-    //};
 
     let input_filename = matches
         .value_of("input")
@@ -71,23 +60,12 @@ fn parse_config() -> Config {
         height: height,
         input_filename: String::from(input_filename),
         output_filename: String::from(output_filename),
+        tmp_width: 100,
     }
 }
 
-fn main() {
-    let config = parse_config();
-    println!("{:?}", config);
-
-    let width2 = 100u64;
-
-    //let file = env::args().nth(1).unwrap_or(String::from(
-    //    "/home/seb/library/movies/Blender Shorts/big-buck-bunny.avi",
-    //));
-
+fn build_input_pipeline(config: &Config) -> (gst::Pipeline, gst::Element, gst_app::AppSink) {
     let uri = format!("file://{}", config.input_filename);
-
-    // Initialize GStreamer
-    gst::init().unwrap();
 
     let src = gst::ElementFactory::make("uridecodebin", None).unwrap();
     src.set_property("uri", &uri).unwrap();
@@ -106,7 +84,7 @@ fn main() {
                 &[
                     ("format", &"BGRx"),
                     ("framerate", &gst::Fraction::new(1, 1)),
-                    ("width", &(width2 as i32)),
+                    ("width", &(config.tmp_width as i32)),
                     ("height", &(config.height as i32)),
                 ],
             ),
@@ -134,88 +112,6 @@ fn main() {
         .dynamic_cast::<gst_app::AppSink>()
         .expect("Sink element is expected to be an appsink!");
     appsink.set_property("sync", &false).unwrap();
-
-    ///////////////////////////////////////////////////////////////////////
-    let preview_pipeline = gst::Pipeline::new(None);
-
-    let src2 = gst::ElementFactory::make("appsrc", None).unwrap();
-
-    let capsfilter2 = gst::ElementFactory::make("capsfilter", None).unwrap();
-    capsfilter2
-        .set_property(
-            "caps",
-            &gst::Caps::new_simple(
-                "video/x-raw",
-                &[
-                    ("format", &"BGRx"),
-                    ("framerate", &gst::Fraction::new(1, 1)),
-                    ("width", &(config.width as i32)),
-                    ("height", &(config.height as i32)),
-                ],
-            ),
-        )
-        .unwrap();
-    let videoconvert2 = gst::ElementFactory::make("videoconvert", None).unwrap();
-
-    let sink2 = gst::ElementFactory::make("autovideosink", None).unwrap();
-    sink2.set_property("sync", &false).unwrap();
-
-    preview_pipeline
-        .add_many(&[&src2, &capsfilter2, &videoconvert2, &sink2])
-        .unwrap();
-    gst::Element::link_many(&[&src2, &capsfilter2, &videoconvert2, &sink2]).unwrap();
-
-    let appsrc = src2.clone()
-        .dynamic_cast::<gst_app::AppSrc>()
-        .expect("Sink element is expected to be an appsrc!");
-    appsrc.set_property_format(gst::Format::Time);
-    appsrc.set_property_block(true);
-
-    match preview_pipeline.set_state(gst::State::Playing) {
-        gst::StateChangeReturn::Success => println!("success"),
-        gst::StateChangeReturn::Failure => println!("failure"),
-        gst::StateChangeReturn::Async => println!("async"),
-        gst::StateChangeReturn::NoPreroll => println!("nopreroll"),
-        _ => println!("other"),
-    }
-    ///////////////////////////////////////////////////////////////////////
-    let output_pipeline = gst::Pipeline::new(None);
-
-    let src3 = gst::ElementFactory::make("appsrc", None).unwrap();
-
-    let capsfilter3 = gst::ElementFactory::make("capsfilter", None).unwrap();
-    capsfilter3
-        .set_property(
-            "caps",
-            &gst::Caps::new_simple(
-                "video/x-raw",
-                &[
-                    ("format", &"BGRx"),
-                    ("framerate", &gst::Fraction::new(1, 1)),
-                    ("width", &(config.width as i32)),
-                    ("height", &(config.height as i32)),
-                ],
-            ),
-        )
-        .unwrap();
-
-    let jpegenc = gst::ElementFactory::make("jpegenc", None).unwrap();
-    let filesink = gst::ElementFactory::make("filesink", None).unwrap();
-    filesink
-        .set_property("location", &config.output_filename)
-        .unwrap();
-    output_pipeline
-        .add_many(&[&src3, &capsfilter3, &jpegenc, &filesink])
-        .unwrap();
-    gst::Element::link_many(&[&src3, &capsfilter3, &jpegenc, &filesink]).unwrap();
-
-    let appsrc2 = src3.clone()
-        .dynamic_cast::<gst_app::AppSrc>()
-        .expect("Sink element is expected to be an appsrc!");
-    appsrc2.set_property_format(gst::Format::Time);
-    appsrc2.set_property_block(true);
-
-    ///////////////////////////////////////////////////////////////////////
 
     let pipeline_clone = pipeline.clone();
     let convert_clone = videorate.clone();
@@ -264,14 +160,115 @@ fn main() {
         }
     });
 
-    pipeline
+    (pipeline, capsfilter, appsink)
+}
+
+fn build_output_pipeline(config: &Config) -> (gst::Pipeline, gst_app::AppSrc) {
+    let output_pipeline = gst::Pipeline::new(None);
+
+    let src3 = gst::ElementFactory::make("appsrc", None).unwrap();
+
+    let capsfilter3 = gst::ElementFactory::make("capsfilter", None).unwrap();
+    capsfilter3
+        .set_property(
+            "caps",
+            &gst::Caps::new_simple(
+                "video/x-raw",
+                &[
+                    ("format", &"BGRx"),
+                    ("framerate", &gst::Fraction::new(1, 1)),
+                    ("width", &(config.width as i32)),
+                    ("height", &(config.height as i32)),
+                ],
+            ),
+        )
+        .unwrap();
+
+    let jpegenc = gst::ElementFactory::make("jpegenc", None).unwrap();
+    let filesink = gst::ElementFactory::make("filesink", None).unwrap();
+    filesink
+        .set_property("location", &config.output_filename)
+        .unwrap();
+    output_pipeline
+        .add_many(&[&src3, &capsfilter3, &jpegenc, &filesink])
+        .unwrap();
+    gst::Element::link_many(&[&src3, &capsfilter3, &jpegenc, &filesink]).unwrap();
+
+    let appsrc2 = src3.clone()
+        .dynamic_cast::<gst_app::AppSrc>()
+        .expect("Sink element is expected to be an appsrc!");
+    appsrc2.set_property_format(gst::Format::Time);
+    appsrc2.set_property_block(true);
+
+    (output_pipeline, appsrc2)
+}
+
+fn build_preview_pipeline(config: &Config) -> (gst::Pipeline, gst_app::AppSrc) {
+    let preview_pipeline = gst::Pipeline::new(None);
+
+    let src2 = gst::ElementFactory::make("appsrc", None).unwrap();
+
+    let capsfilter2 = gst::ElementFactory::make("capsfilter", None).unwrap();
+    capsfilter2
+        .set_property(
+            "caps",
+            &gst::Caps::new_simple(
+                "video/x-raw",
+                &[
+                    ("format", &"BGRx"),
+                    ("framerate", &gst::Fraction::new(1, 1)),
+                    ("width", &(config.width as i32)),
+                    ("height", &(config.height as i32)),
+                ],
+            ),
+        )
+        .unwrap();
+    let videoconvert2 = gst::ElementFactory::make("videoconvert", None).unwrap();
+
+    let sink2 = gst::ElementFactory::make("autovideosink", None).unwrap();
+    sink2.set_property("sync", &false).unwrap();
+
+    preview_pipeline
+        .add_many(&[&src2, &capsfilter2, &videoconvert2, &sink2])
+        .unwrap();
+    gst::Element::link_many(&[&src2, &capsfilter2, &videoconvert2, &sink2]).unwrap();
+
+    let appsrc = src2.clone()
+        .dynamic_cast::<gst_app::AppSrc>()
+        .expect("Sink element is expected to be an appsrc!");
+    appsrc.set_property_format(gst::Format::Time);
+    appsrc.set_property_block(true);
+
+    match preview_pipeline.set_state(gst::State::Playing) {
+        gst::StateChangeReturn::Success => println!("success"),
+        gst::StateChangeReturn::Failure => println!("failure"),
+        gst::StateChangeReturn::Async => println!("async"),
+        gst::StateChangeReturn::NoPreroll => println!("nopreroll"),
+        _ => println!("other"),
+    }
+
+    (preview_pipeline, appsrc)
+}
+
+fn main() {
+    let config = parse_config();
+    println!("{:#?}", config);
+
+    // Initialize GStreamer
+    gst::init().unwrap();
+
+    let (input_pipeline, capsfilter, appsink) = build_input_pipeline(&config);
+    let (output_pipeline, output_src) = build_output_pipeline(&config);
+    let (preview_pipeline, preview_src) = build_preview_pipeline(&config);
+
+    input_pipeline
         .set_state(gst::State::Playing)
         .into_result()
         .unwrap();
 
-    pipeline.get_state(10 * gst::SECOND);
+    input_pipeline.get_state(10 * gst::SECOND);
 
-    let duration: gst::ClockTime = pipeline.query_duration().unwrap();
+    let duration: gst::ClockTime = input_pipeline.query_duration().unwrap();
     let fps = gst::Fraction::new(config.width as i32, duration.seconds().unwrap() as i32);
     println!("fps: {}", fps);
 
@@ -283,7 +280,7 @@ fn main() {
                 &[
                     ("format", &"BGRx"),
                     ("framerate", &fps),
-                    ("width", &(width2 as i32)),
+                    ("width", &(config.tmp_width as i32)),
                     ("height", &(config.height as i32)),
                 ],
             ),
@@ -292,7 +289,7 @@ fn main() {
     //capsfilter2.set_property("caps", &gst::Caps::new_simple("video/x-raw", &[("format", &"BGRx"), ("framerate", &fps), ("width", &(width as i32)), ("height", &(height as i32))])).unwrap();
     //capsfilter3.set_property("caps", &gst::Caps::new_simple("video/x-raw", &[("format", &"BGRx"), ("framerate", &fps), ("width", &(width as i32)), ("height", &(height as i32))])).unwrap();
 
-    let bus = pipeline.get_bus().unwrap();
+    let bus = input_pipeline.get_bus().unwrap();
     bus.connect_message(move |_, msg| match msg.view() {
         gst::MessageView::Error(err) => {
             eprintln!(
@@ -349,13 +346,13 @@ fn main() {
                     gst::StateChangeReturn::NoPreroll => println!("nopreroll"),
                     _ => println!("other"),
                 }
-                match appsrc2.push_buffer(outbuffer.copy_deep().unwrap()) {
+                match output_src.push_buffer(outbuffer.copy_deep().unwrap()) {
                     gst::FlowReturn::Ok => println!("ok"),
                     gst::FlowReturn::Flushing => println!("flushing"),
                     gst::FlowReturn::Eos => println!("eos"),
                     _ => println!("other"),
                 }
-                match appsrc2.end_of_stream() {
+                match output_src.end_of_stream() {
                     gst::FlowReturn::Ok => println!("ok"),
                     gst::FlowReturn::Flushing => println!("flushing"),
                     gst::FlowReturn::Eos => println!("eos"),
@@ -402,15 +399,15 @@ fn main() {
                 let mut g: u64 = 0;
                 let mut r: u64 = 0;
 
-                for x in 0..width2 {
-                    b += indata[(width2 * y * 4 + 4 * x + 0) as usize] as u64;
-                    g += indata[(width2 * y * 4 + 4 * x + 1) as usize] as u64;
-                    r += indata[(width2 * y * 4 + 4 * x + 2) as usize] as u64;
+                for x in 0..config.tmp_width {
+                    b += indata[(config.tmp_width * y * 4 + 4 * x + 0) as usize] as u64;
+                    g += indata[(config.tmp_width * y * 4 + 4 * x + 1) as usize] as u64;
+                    r += indata[(config.tmp_width * y * 4 + 4 * x + 2) as usize] as u64;
                 }
 
-                b /= width2;
-                g /= width2;
-                r /= width2;
+                b /= config.tmp_width;
+                g /= config.tmp_width;
+                r /= config.tmp_width;
 
                 data[(config.width * y * 4 + i * 4 + 0) as usize] = b as u8;
                 data[(config.width * y * 4 + i * 4 + 1) as usize] = g as u8;
@@ -418,13 +415,13 @@ fn main() {
             }
         }
 
-        appsrc
+        preview_src
             .push_buffer(outbuffer.copy_deep().unwrap())
             .into_result()
             .unwrap();
     }
 
-    let ret = pipeline.set_state(gst::State::Null);
+    let ret = input_pipeline.set_state(gst::State::Null);
     assert_ne!(ret, gst::StateChangeReturn::Failure);
     let ret2 = preview_pipeline.set_state(gst::State::Null);
     assert_ne!(ret2, gst::StateChangeReturn::Failure);
