@@ -283,7 +283,7 @@ fn main() {
                     "Error received from element {:?}: {}",
                     err.get_src().map(|s| s.get_path_string()),
                     err.get_error()
-                    );
+                );
                 eprintln!("Debugging information: {:?}", err.get_debug());
             }
             _ => (),
@@ -312,8 +312,14 @@ fn main() {
     loop {
         let sample = match appsink.pull_sample() {
             None => {
-                output_pipeline.set_state(gst::State::Playing).into_result().unwrap();
-                output_src.push_buffer(outbuffer.copy_deep().unwrap()).into_result().unwrap();
+                output_pipeline
+                    .set_state(gst::State::Playing)
+                    .into_result()
+                    .unwrap();
+                output_src
+                    .push_buffer(outbuffer.copy_deep().unwrap())
+                    .into_result()
+                    .unwrap();
                 output_src.end_of_stream().into_result().unwrap();
                 break;
             }
@@ -330,7 +336,7 @@ fn main() {
             config.width - 1,
         );
 
-        let progress = 100*pts.nseconds().unwrap() / duration.nseconds().unwrap();
+        let progress = 100 * pts.nseconds().unwrap() / duration.nseconds().unwrap();
         print!("\rnordlicht: {}%", progress);
         stdout().flush().unwrap();
 
@@ -366,7 +372,16 @@ fn main() {
             .unwrap();
     }
 
-    input_pipeline.set_state(gst::State::Null).into_result().unwrap();
-    preview_pipeline.set_state(gst::State::Null).into_result().unwrap();
-    output_pipeline.set_state(gst::State::Null).into_result().unwrap();
+    input_pipeline
+        .set_state(gst::State::Null)
+        .into_result()
+        .unwrap();
+    preview_pipeline
+        .set_state(gst::State::Null)
+        .into_result()
+        .unwrap();
+    output_pipeline
+        .set_state(gst::State::Null)
+        .into_result()
+        .unwrap();
 }
