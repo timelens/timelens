@@ -326,10 +326,10 @@ fn generate_timeline(
 
         done[i as usize] += 1;
 
-        for n in &done {
-            print!("{}", n);
-            stdout().flush().unwrap();
-        }
+        //for n in &done {
+        //    print!("{}", n);
+        //    stdout().flush().unwrap();
+        //}
 
         if !done.contains(&0) {
             // we are done
@@ -344,12 +344,28 @@ fn generate_timeline(
 
             input_pipeline
                 .seek_simple(
-                    gst::SeekFlags::FLUSH | gst::SeekFlags::KEY_UNIT,
+                    gst::SeekFlags::FLUSH, // | gst::SeekFlags::KEY_UNIT,
                     j * gst::NSECOND,
                 )
                 .unwrap();
         }
     }
+}
+
+fn write_result(
+    outbuffer: &gst::Buffer,
+    output_pipeline: &gst::Pipeline,
+    output_src: &gst_app::AppSrc,
+) {
+    output_pipeline
+        .set_state(gst::State::Playing)
+        .into_result()
+        .unwrap();
+    output_src
+        .push_buffer(outbuffer.copy_deep().unwrap())
+        .into_result()
+        .unwrap();
+    output_src.end_of_stream().into_result().unwrap();
 }
 
 fn main() {
@@ -412,16 +428,7 @@ fn main() {
     }
 
     let outbuffer = generate_timeline(&config, &input_pipeline, &appsink, &preview_src, &duration);
-
-    output_pipeline
-        .set_state(gst::State::Playing)
-        .into_result()
-        .unwrap();
-    output_src
-        .push_buffer(outbuffer.copy_deep().unwrap())
-        .into_result()
-        .unwrap();
-    output_src.end_of_stream().into_result().unwrap();
+    write_result(&outbuffer, &output_pipeline, &output_src);
 
     println!("-> '{}'", config.output_filename);
 
