@@ -69,8 +69,8 @@ fn parse_config() -> Config {
     let output_filename = matches.value_of("output").unwrap_or(&fallback_output);
 
     Config {
-        width: width,
-        height: height,
+        width,
+        height,
         input_filename: String::from(input_filename),
         output_filename: String::from(output_filename),
         tmp_width: 400,
@@ -281,8 +281,8 @@ fn generate_timeline(
 
         let pts: gst::ClockTime = buffer.get_pts();
         let i = cmp::min(
-            (config.width * (pts.nseconds().unwrap() as usize)
-                / (duration.nseconds().unwrap() as usize)),
+            config.width * (pts.nseconds().unwrap() as usize)
+                / (duration.nseconds().unwrap() as usize),
             config.width - 1,
         );
 
@@ -301,7 +301,7 @@ fn generate_timeline(
                 let mut b: usize = 0;
 
                 for x in 0..config.tmp_width {
-                    r += indata[config.tmp_width * y * 4 + 4 * x + 0] as usize;
+                    r += indata[config.tmp_width * y * 4 + 4 * x] as usize;
                     g += indata[config.tmp_width * y * 4 + 4 * x + 1] as usize;
                     b += indata[config.tmp_width * y * 4 + 4 * x + 2] as usize;
                 }
@@ -310,7 +310,7 @@ fn generate_timeline(
                 g /= config.tmp_width;
                 b /= config.tmp_width;
 
-                data[config.width * y * 4 + i * 4 + 0] = r as u8;
+                data[config.width * y * 4 + i * 4] = r as u8;
                 data[config.width * y * 4 + i * 4 + 1] = g as u8;
                 data[config.width * y * 4 + i * 4 + 2] = b as u8;
                 data[config.width * y * 4 + i * 4 + 3] = 255;
@@ -411,10 +411,9 @@ fn main() {
         )
         .unwrap();
 
-    for pipeline in [&input_pipeline, &output_pipeline, &preview_pipeline].iter() {
+    for pipeline in &[&input_pipeline, &output_pipeline, &preview_pipeline] {
         let bus = pipeline.get_bus().unwrap();
-        bus.connect_message(move |_, msg| match msg.view() {
-            gst::MessageView::Error(err) => {
+        bus.connect_message(move |_, msg| if let gst::MessageView::Error(err) = msg.view() {
                 eprintln!(
                     "Error received from element {:?}: {}",
                     err.get_src().map(|s| s.get_path_string()),
@@ -422,8 +421,7 @@ fn main() {
                 );
                 eprintln!("Debugging information: {:?}", err.get_debug());
             }
-            _ => (),
-        });
+        );
         bus.add_signal_watch();
     }
 
