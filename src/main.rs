@@ -1,5 +1,5 @@
 extern crate clap;
-use clap::{Arg, App};
+use clap::{App, Arg};
 extern crate glib;
 extern crate gstreamer as gst;
 extern crate gstreamer_app as gst_app;
@@ -16,27 +16,30 @@ struct Config {
 
 fn parse_config() -> Config {
     let matches = App::new("nordlicht")
-                           //.version("0.1")
-                           .author("Sebastian Morr <sebastian@morr.cc>")
-                           .arg(Arg::with_name("input")
-                                .help("Input file")
-                                .index(1))
-                           .arg(Arg::with_name("width")
-                                .help("Width of output")
-                                .short("w")
-                                .long("width")
-                                .takes_value(true))
-                           .arg(Arg::with_name("height")
-                                .help("Height of output")
-                                .short("h")
-                                .long("height")
-                                .takes_value(true))
-                           .arg(Arg::with_name("output")
-                                .help("Name of output file")
-                                .short("o")
-                                .long("output")
-                                .takes_value(true))
-                           .get_matches();
+        .author("Sebastian Morr <sebastian@morr.cc>")
+        .arg(Arg::with_name("input").help("Input file").index(1))
+        .arg(
+            Arg::with_name("width")
+                .help("Width of output")
+                .short("w")
+                .long("width")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("height")
+                .help("Height of output")
+                .short("h")
+                .long("height")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("output")
+                .help("Name of output file")
+                .short("o")
+                .long("output")
+                .takes_value(true),
+        )
+        .get_matches();
 
     let width_string = matches.value_of("width").unwrap_or("1920");
     let width: u64 = width_string.parse().expect("Invalid width");
@@ -56,7 +59,9 @@ fn parse_config() -> Config {
     //    }
     //};
 
-    let input_filename = matches.value_of("input").unwrap_or("/home/seb/library/movies/Blender Shorts/big-buck-bunny.avi");
+    let input_filename = matches
+        .value_of("input")
+        .unwrap_or("/home/seb/library/movies/Blender Shorts/big-buck-bunny.avi");
 
     let fallback_output = format!("{}.nordlicht.jpg", &input_filename);
     let output_filename = matches.value_of("output").unwrap_or(&fallback_output);
@@ -93,18 +98,20 @@ fn main() {
     let videoconvert = gst::ElementFactory::make("videoconvert", None).unwrap();
 
     let capsfilter = gst::ElementFactory::make("capsfilter", None).unwrap();
-    capsfilter.set_property(
-        "caps",
-        &gst::Caps::new_simple(
-            "video/x-raw",
-            &[
-                ("format", &"BGRx"),
-                ("framerate", &gst::Fraction::new(1, 1)),
-                ("width", &(width2 as i32)),
-                ("height", &(config.height as i32)),
-            ],
-        ),
-    ).unwrap();
+    capsfilter
+        .set_property(
+            "caps",
+            &gst::Caps::new_simple(
+                "video/x-raw",
+                &[
+                    ("format", &"BGRx"),
+                    ("framerate", &gst::Fraction::new(1, 1)),
+                    ("width", &(width2 as i32)),
+                    ("height", &(config.height as i32)),
+                ],
+            ),
+        )
+        .unwrap();
 
     let sink = gst::ElementFactory::make("appsink", None).unwrap();
 
@@ -134,18 +141,20 @@ fn main() {
     let src2 = gst::ElementFactory::make("appsrc", None).unwrap();
 
     let capsfilter2 = gst::ElementFactory::make("capsfilter", None).unwrap();
-    capsfilter2.set_property(
-        "caps",
-        &gst::Caps::new_simple(
-            "video/x-raw",
-            &[
-                ("format", &"BGRx"),
-                ("framerate", &gst::Fraction::new(1, 1)),
-                ("width", &(config.width as i32)),
-                ("height", &(config.height as i32)),
-            ],
-        ),
-    ).unwrap();
+    capsfilter2
+        .set_property(
+            "caps",
+            &gst::Caps::new_simple(
+                "video/x-raw",
+                &[
+                    ("format", &"BGRx"),
+                    ("framerate", &gst::Fraction::new(1, 1)),
+                    ("width", &(config.width as i32)),
+                    ("height", &(config.height as i32)),
+                ],
+            ),
+        )
+        .unwrap();
     let videoconvert2 = gst::ElementFactory::make("videoconvert", None).unwrap();
 
     let sink2 = gst::ElementFactory::make("autovideosink", None).unwrap();
@@ -175,22 +184,26 @@ fn main() {
     let src3 = gst::ElementFactory::make("appsrc", None).unwrap();
 
     let capsfilter3 = gst::ElementFactory::make("capsfilter", None).unwrap();
-    capsfilter3.set_property(
-        "caps",
-        &gst::Caps::new_simple(
-            "video/x-raw",
-            &[
-                ("format", &"BGRx"),
-                ("framerate", &gst::Fraction::new(1, 1)),
-                ("width", &(config.width as i32)),
-                ("height", &(config.height as i32)),
-            ],
-        ),
-    ).unwrap();
+    capsfilter3
+        .set_property(
+            "caps",
+            &gst::Caps::new_simple(
+                "video/x-raw",
+                &[
+                    ("format", &"BGRx"),
+                    ("framerate", &gst::Fraction::new(1, 1)),
+                    ("width", &(config.width as i32)),
+                    ("height", &(config.height as i32)),
+                ],
+            ),
+        )
+        .unwrap();
 
     let jpegenc = gst::ElementFactory::make("jpegenc", None).unwrap();
     let filesink = gst::ElementFactory::make("filesink", None).unwrap();
-    filesink.set_property("location", &config.output_filename).unwrap();
+    filesink
+        .set_property("location", &config.output_filename)
+        .unwrap();
     output_pipeline
         .add_many(&[&src3, &capsfilter3, &jpegenc, &filesink])
         .unwrap();
@@ -251,7 +264,10 @@ fn main() {
         }
     });
 
-    pipeline.set_state(gst::State::Playing).into_result().unwrap();
+    pipeline
+        .set_state(gst::State::Playing)
+        .into_result()
+        .unwrap();
 
     pipeline.get_state(10 * gst::SECOND);
 
@@ -319,7 +335,8 @@ fn main() {
     });
     bus3.add_signal_watch();
 
-    let mut outbuffer = gst::Buffer::with_size((config.width * config.height * 4) as usize).unwrap();
+    let mut outbuffer =
+        gst::Buffer::with_size((config.width * config.height * 4) as usize).unwrap();
 
     loop {
         let sample = match appsink.pull_sample() {
@@ -386,9 +403,9 @@ fn main() {
                 let mut r: u64 = 0;
 
                 for x in 0..width2 {
-                    b += indata[(width2*y*4+4*x+0) as usize] as u64;
-                    g += indata[(width2*y*4+4*x+1) as usize] as u64;
-                    r += indata[(width2*y*4+4*x+2) as usize] as u64;
+                    b += indata[(width2 * y * 4 + 4 * x + 0) as usize] as u64;
+                    g += indata[(width2 * y * 4 + 4 * x + 1) as usize] as u64;
+                    r += indata[(width2 * y * 4 + 4 * x + 2) as usize] as u64;
                 }
 
                 b /= width2;
@@ -401,7 +418,10 @@ fn main() {
             }
         }
 
-        appsrc.push_buffer(outbuffer.copy_deep().unwrap()).into_result().unwrap();
+        appsrc
+            .push_buffer(outbuffer.copy_deep().unwrap())
+            .into_result()
+            .unwrap();
     }
 
     let ret = pipeline.set_state(gst::State::Null);
