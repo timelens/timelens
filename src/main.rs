@@ -1,15 +1,22 @@
 extern crate clap;
-use clap::{Arg, App, SubCommand};
+use clap::{Arg, App};
 extern crate glib;
 extern crate gstreamer as gst;
 extern crate gstreamer_app as gst_app;
 use gst::prelude::*;
-use std::env;
 use std::cmp;
 
-fn main() {
+#[derive(Debug)]
+struct Config {
+    width: u64,
+    height: u64,
+    input_filename: String,
+    output_filename: String,
+}
+
+fn parse_config() -> Config {
     let matches = App::new("nordlicht")
-                           .version("0.1")
+                           //.version("0.1")
                            .author("Sebastian Morr <sebastian@morr.cc>")
                            .arg(Arg::with_name("input")
                                 .help("Input file")
@@ -32,40 +39,47 @@ fn main() {
                            .get_matches();
 
     let width_string = matches.value_of("width").unwrap_or("1920");
-    let width: u64 = match width_string.parse() {
-        Ok(w) => w,
-        Err(_) => {
-            eprintln!("'{}' is not a valid width", width_string);
-            return
-        }
-    };
+    let width: u64 = width_string.parse().expect("Invalid width");
+    //    Ok(w) => w,
+    //    Err(_) => {
+    //        eprintln!("'{}' is not a valid width", width_string);
+    //        return
+    //    }
+    //};
 
     let height_string = matches.value_of("height").unwrap_or("192");
-    let height: u64 = match height_string.parse() {
-        Ok(w) => w,
-        Err(_) => {
-            eprintln!("'{}' is not a valid height", height_string);
-            return
-        }
-    };
+    let height: u64 = height_string.parse().expect("Invalid height");
+    //    Ok(w) => w,
+    //    Err(_) => {
+    //        eprintln!("'{}' is not a valid height", height_string);
+    //        return
+    //    }
+    //};
 
-    println!("{}x{}", width, height);
+    let input_filename = matches.value_of("input").unwrap_or("/home/seb/library/movies/Blender Shorts/big-buck-bunny.avi");
+
+    let fallback_output = format!("{}.nordlicht.jpg", &input_filename);
+    let output_filename = matches.value_of("output").unwrap_or(&fallback_output);
+
+    Config {
+        width: width,
+        height: height,
+        input_filename: String::from(input_filename),
+        output_filename: String::from(output_filename),
+    }
+}
+
+fn main() {
+    let config = parse_config();
+    println!("{:?}", config);
 
     let width2 = 100u64;
-
-    let file = matches.value_of("input").unwrap_or("/home/seb/library/movies/Blender Shorts/big-buck-bunny.avi");
-
-    let fallback_output = format!("{}.nordlicht.jpg", &file);
-    let output = matches.value_of("output").unwrap_or(&fallback_output);
-
-    println!("input: {}", file);
-    println!("output: {}", output);
 
     //let file = env::args().nth(1).unwrap_or(String::from(
     //    "/home/seb/library/movies/Blender Shorts/big-buck-bunny.avi",
     //));
 
-    let uri = format!("file://{}", file);
+    let uri = format!("file://{}", config.input_filename);
 
     // Initialize GStreamer
     gst::init().unwrap();
@@ -75,7 +89,7 @@ fn main() {
 
     let videorate = gst::ElementFactory::make("videorate", None).unwrap();
     let videoscale = gst::ElementFactory::make("videoscale", None).unwrap();
-    videoscale.set_property("add-borders", &false);
+    videoscale.set_property("add-borders", &false).unwrap();
     let videoconvert = gst::ElementFactory::make("videoconvert", None).unwrap();
 
     let capsfilter = gst::ElementFactory::make("capsfilter", None).unwrap();
@@ -87,21 +101,14 @@ fn main() {
                 ("format", &"BGRx"),
                 ("framerate", &gst::Fraction::new(1, 1)),
                 ("width", &(width2 as i32)),
-                ("height", &(height as i32)),
+                ("height", &(config.height as i32)),
             ],
         ),
-    );
+    ).unwrap();
 
     let sink = gst::ElementFactory::make("appsink", None).unwrap();
 
     let pipeline = gst::Pipeline::new(None);
-
-    //let output = gst::ElementFactory::make("autovideosink", None).unwrap();
-    //output.set_property("sync", &false);
-    //let tee = gst::ElementFactory::make("tee", None).unwrap();
-
-    //let q1 = gst::ElementFactory::make("queue", None).unwrap();
-    //let q2 = gst::ElementFactory::make("queue", None).unwrap();
 
     pipeline
         .add_many(&[
@@ -115,12 +122,11 @@ fn main() {
         .unwrap();
 
     gst::Element::link_many(&[&videorate, &videoscale, &videoconvert, &capsfilter, &sink]).unwrap();
-    //gst::Element::link_many(&[&tee, &q2, &output]).unwrap();
 
     let appsink = sink.clone()
         .dynamic_cast::<gst_app::AppSink>()
         .expect("Sink element is expected to be an appsink!");
-    appsink.set_property("sync", &false);
+    appsink.set_property("sync", &false).unwrap();
 
     ///////////////////////////////////////////////////////////////////////
     let preview_pipeline = gst::Pipeline::new(None);
@@ -135,15 +141,15 @@ fn main() {
             &[
                 ("format", &"BGRx"),
                 ("framerate", &gst::Fraction::new(1, 1)),
-                ("width", &(width as i32)),
-                ("height", &(height as i32)),
+                ("width", &(config.width as i32)),
+                ("height", &(config.height as i32)),
             ],
         ),
-    );
+    ).unwrap();
     let videoconvert2 = gst::ElementFactory::make("videoconvert", None).unwrap();
 
     let sink2 = gst::ElementFactory::make("autovideosink", None).unwrap();
-    sink2.set_property("sync", &false);
+    sink2.set_property("sync", &false).unwrap();
 
     preview_pipeline
         .add_many(&[&src2, &capsfilter2, &videoconvert2, &sink2])
@@ -176,15 +182,15 @@ fn main() {
             &[
                 ("format", &"BGRx"),
                 ("framerate", &gst::Fraction::new(1, 1)),
-                ("width", &(width as i32)),
-                ("height", &(height as i32)),
+                ("width", &(config.width as i32)),
+                ("height", &(config.height as i32)),
             ],
         ),
-    );
+    ).unwrap();
 
     let jpegenc = gst::ElementFactory::make("jpegenc", None).unwrap();
     let filesink = gst::ElementFactory::make("filesink", None).unwrap();
-    filesink.set_property("location", &output);
+    filesink.set_property("location", &config.output_filename).unwrap();
     output_pipeline
         .add_many(&[&src3, &capsfilter3, &jpegenc, &filesink])
         .unwrap();
@@ -245,12 +251,12 @@ fn main() {
         }
     });
 
-    pipeline.set_state(gst::State::Playing);
+    pipeline.set_state(gst::State::Playing).into_result().unwrap();
 
     pipeline.get_state(10 * gst::SECOND);
 
     let duration: gst::ClockTime = pipeline.query_duration().unwrap();
-    let fps = gst::Fraction::new(width as i32, duration.seconds().unwrap() as i32);
+    let fps = gst::Fraction::new(config.width as i32, duration.seconds().unwrap() as i32);
     println!("fps: {}", fps);
 
     capsfilter
@@ -262,7 +268,7 @@ fn main() {
                     ("format", &"BGRx"),
                     ("framerate", &fps),
                     ("width", &(width2 as i32)),
-                    ("height", &(height as i32)),
+                    ("height", &(config.height as i32)),
                 ],
             ),
         )
@@ -313,7 +319,7 @@ fn main() {
     });
     bus3.add_signal_watch();
 
-    let mut outbuffer = gst::Buffer::with_size((width * height * 4) as usize).unwrap();
+    let mut outbuffer = gst::Buffer::with_size((config.width * config.height * 4) as usize).unwrap();
 
     loop {
         let sample = match appsink.pull_sample() {
@@ -365,8 +371,8 @@ fn main() {
 
         let pts: gst::ClockTime = buffer.get_pts();
         let i = cmp::min(
-            (width * pts.nseconds().unwrap() / duration.nseconds().unwrap()),
-            width - 1,
+            (config.width * pts.nseconds().unwrap() / duration.nseconds().unwrap()),
+            config.width - 1,
         );
 
         {
@@ -374,7 +380,7 @@ fn main() {
 
             let mut data = outbuffer.map_writable().unwrap();
 
-            for y in 0..height {
+            for y in 0..config.height {
                 let mut b: u64 = 0;
                 let mut g: u64 = 0;
                 let mut r: u64 = 0;
@@ -389,9 +395,9 @@ fn main() {
                 g /= width2;
                 r /= width2;
 
-                data[(width * y * 4 + i * 4 + 0) as usize] = b as u8;
-                data[(width * y * 4 + i * 4 + 1) as usize] = g as u8;
-                data[(width * y * 4 + i * 4 + 2) as usize] = r as u8;
+                data[(config.width * y * 4 + i * 4 + 0) as usize] = b as u8;
+                data[(config.width * y * 4 + i * 4 + 1) as usize] = g as u8;
+                data[(config.width * y * 4 + i * 4 + 2) as usize] = r as u8;
             }
         }
 
