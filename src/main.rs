@@ -1,3 +1,5 @@
+extern crate clap;
+use clap::{Arg, App, SubCommand};
 extern crate glib;
 extern crate gstreamer as gst;
 extern crate gstreamer_app as gst_app;
@@ -6,14 +8,62 @@ use std::env;
 use std::cmp;
 
 fn main() {
-    let width = 5619u64;
-    let height = 400u64;
+    let matches = App::new("nordlicht")
+                           .version("0.1")
+                           .author("Sebastian Morr <sebastian@morr.cc>")
+                           .arg(Arg::with_name("input")
+                                .help("Input file")
+                                .index(1))
+                           .arg(Arg::with_name("width")
+                                .help("Width of output")
+                                .short("w")
+                                .long("width")
+                                .takes_value(true))
+                           .arg(Arg::with_name("height")
+                                .help("Height of output")
+                                .short("h")
+                                .long("height")
+                                .takes_value(true))
+                           .arg(Arg::with_name("output")
+                                .help("Name of output file")
+                                .short("o")
+                                .long("output")
+                                .takes_value(true))
+                           .get_matches();
+
+    let width_string = matches.value_of("width").unwrap_or("1920");
+    let width: u64 = match width_string.parse() {
+        Ok(w) => w,
+        Err(_) => {
+            eprintln!("'{}' is not a valid width", width_string);
+            return
+        }
+    };
+
+    let height_string = matches.value_of("height").unwrap_or("192");
+    let height: u64 = match height_string.parse() {
+        Ok(w) => w,
+        Err(_) => {
+            eprintln!("'{}' is not a valid height", height_string);
+            return
+        }
+    };
+
+    println!("{}x{}", width, height);
 
     let width2 = 100u64;
 
-    let file = env::args().nth(1).unwrap_or(String::from(
-        "/home/seb/library/movies/Blender Shorts/big-buck-bunny.avi",
-    ));
+    let file = matches.value_of("input").unwrap_or("/home/seb/library/movies/Blender Shorts/big-buck-bunny.avi");
+
+    let fallback_output = format!("{}.nordlicht.jpg", &file);
+    let output = matches.value_of("output").unwrap_or(&fallback_output);
+
+    println!("input: {}", file);
+    println!("output: {}", output);
+
+    //let file = env::args().nth(1).unwrap_or(String::from(
+    //    "/home/seb/library/movies/Blender Shorts/big-buck-bunny.avi",
+    //));
 
     let uri = format!("file://{}", file);
 
@@ -134,7 +184,7 @@ fn main() {
 
     let jpegenc = gst::ElementFactory::make("jpegenc", None).unwrap();
     let filesink = gst::ElementFactory::make("filesink", None).unwrap();
-    filesink.set_property("location", &"/tmp/nordlicht.jpg");
+    filesink.set_property("location", &output);
     output_pipeline
         .add_many(&[&src3, &capsfilter3, &jpegenc, &filesink])
         .unwrap();
@@ -297,7 +347,6 @@ fn main() {
         };
 
         let buffer = if let Some(buffer) = sample.get_buffer() {
-            println!("buffer received!");
             let pts = buffer.get_pts();
             println!("{}", pts);
 
@@ -346,12 +395,7 @@ fn main() {
             }
         }
 
-        match appsrc.push_buffer(outbuffer.copy_deep().unwrap()) {
-            gst::FlowReturn::Ok => println!("ok"),
-            gst::FlowReturn::Flushing => println!("flushing"),
-            gst::FlowReturn::Eos => println!("eos"),
-            _ => println!("other"),
-        }
+        appsrc.push_buffer(outbuffer.copy_deep().unwrap()).into_result().unwrap();
     }
 
     let ret = pipeline.set_state(gst::State::Null);

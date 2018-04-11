@@ -1,5 +1,5 @@
 [package]
-name = "gst"
+name = "nordlicht"
 version = "0.1.0"
 authors = ["Sebastian Morr <sebastian@morr.cc>"]
 
@@ -11,3 +11,4 @@ gstreamer-video = "0.11.0"
 image = "*"
 failure = "0.1.1"
 failure_derive = "0.1.1"
+clap = "2.31.2"
