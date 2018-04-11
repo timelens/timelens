@@ -5,6 +5,8 @@ use gst::prelude::*;
 use std::env;
 
 fn main() {
+    let width = 1000u64;
+    let height = 200u64;
 
     //let args: Vec<String> = env::args().collect();
     //let file = if args.len() > 1 {
@@ -27,7 +29,9 @@ fn main() {
     let videoscale = gst::ElementFactory::make("videoscale", None).unwrap();
     let videoconvert = gst::ElementFactory::make("videoconvert", None).unwrap();
 
-    //let capsfilter = gst::ElementFactory::make("capsfilter", None).unwrap();
+    let capsfilter = gst::ElementFactory::make("capsfilter", None).unwrap();
+    capsfilter.set_property("caps", &gst::Caps::new_simple("video/x-raw", &[("format", &"BGRx"), ("framerate", &gst::Fraction::new(1, 1)), ("width", &(1i32)), ("height", &(height as i32))]));
+
     //capsfilter.set_property("caps", &"video/x-raw,framerate=1/1,width=400,height=400");
     //capsfilter.set_property("caps", &gst::Caps::new_simple("video/x-raw", &[("framerate", &(1i32)), ("width", &(400i32)), ("height", &(400i32))]));
     //capsfilter.set_property("caps", &gst::Caps::new_simple("video/x-raw", &[("framerate", &gst::Fraction::new(1, 1)), ("width", &(400i32)), ("height", &(400i32))]));
@@ -52,11 +56,10 @@ fn main() {
     let pipeline = gst::Pipeline::new(None);
 
     pipeline
-        .add_many(&[&src, &videorate, &videoscale, &videoconvert, &sink])
+        .add_many(&[&src, &videorate, &videoscale, &videoconvert, &capsfilter, &sink])
         .unwrap();
-    gst::Element::link_many(&[&videorate, &videoscale, &videoconvert, &sink]).unwrap();
+    gst::Element::link_many(&[&videorate, &videoscale, &videoconvert, &capsfilter, &sink]).unwrap();
 
-    sink.set_property("caps", &gst::Caps::new_simple("video/x-raw", &[("format", &"BGRx"), ("framerate", &gst::Fraction::new(1, 1)), ("width", &(1i32)), ("height", &(400i32))]));
     let appsink = sink.clone()
         .dynamic_cast::<gst_app::AppSink>()
         .expect("Sink element is expected to be an appsink!");
@@ -69,7 +72,8 @@ fn main() {
 
     let src2 = gst::ElementFactory::make("appsrc", None).unwrap();
 
-    //let capsfilter2 = gst::ElementFactory::make("capsfilter", None).unwrap();
+    let capsfilter2 = gst::ElementFactory::make("capsfilter", None).unwrap();
+    capsfilter2.set_property("caps", &gst::Caps::new_simple("video/x-raw", &[("format", &"BGRx"), ("framerate", &gst::Fraction::new(1, 1)), ("width", &(width as i32)), ("height", &(height as i32))]));
     //capsfilter.set_property("caps", &"video/x-raw,framerate=1/1,width=400,height=400");
     //capsfilter.set_property("caps", &gst::Caps::new_simple("video/x-raw", &[("framerate", &(1i32)), ("width", &(400i32)), ("height", &(400i32))]));
     //capsfilter2.set_property("caps", &gst::Caps::new_simple("video/x-raw", &[]));//(("width", &(400i32)), ("height", &(400i32))]));
@@ -84,13 +88,12 @@ fn main() {
     //multifilesink.set_property("location", &"/tmp/frame%04d.jpg");
     //output_pipeline.add_many(&[&src2, &jpegenc, &multifilesink]).unwrap();
     //gst::Element::link_many(&[&src2, &jpegenc, &multifilesink]).unwrap();
-    output_pipeline.add_many(&[&src2, &videoconvert2, &sink2]).unwrap();
-    gst::Element::link_many(&[&src2, &videoconvert2, &sink2]).unwrap();
+    output_pipeline.add_many(&[&src2, &capsfilter2, &videoconvert2, &sink2]).unwrap();
+    gst::Element::link_many(&[&src2, &capsfilter2, &videoconvert2, &sink2]).unwrap();
 
     //output_pipeline.add_many(&[&src2, &videoconvert2, &fakesink]).unwrap();
     //gst::Element::link_many(&[&src2, &videoconvert2, &fakesink]).unwrap();
 
-    src2.set_property("caps", &gst::Caps::new_simple("video/x-raw", &[("format", &"BGRx"), ("framerate", &gst::Fraction::new(1, 1)), ("width", &(400i32)), ("height", &(400i32))]));
     let appsrc = src2.clone()
         .dynamic_cast::<gst_app::AppSrc>()
         .expect("Sink element is expected to be an appsrc!");
@@ -174,6 +177,13 @@ fn main() {
     pipeline.set_state(gst::State::Playing);
 
     pipeline.get_state(10 * gst::SECOND);
+
+    let duration: gst::ClockTime = pipeline.query_duration().unwrap();
+    let fps = gst::Fraction::new(width as i32, duration.seconds().unwrap() as i32);
+    println!("fps: {}", fps);
+
+    capsfilter.set_property("caps", &gst::Caps::new_simple("video/x-raw", &[("format", &"BGRx"), ("framerate", &fps), ("width", &(1i32)), ("height", &(height as i32))])).unwrap();
+    capsfilter2.set_property("caps", &gst::Caps::new_simple("video/x-raw", &[("format", &"BGRx"), ("framerate", &fps), ("width", &(width as i32)), ("height", &(height as i32))])).unwrap();
 
     //
     //
@@ -280,10 +290,9 @@ fn main() {
 
     //main_loop.run();
 
-    let mut outbuffer = gst::Buffer::with_size(400*400*4).unwrap();
+    let mut outbuffer = gst::Buffer::with_size((width*height*4) as usize).unwrap();
 //    let mut i = 0;
 
-    let duration: gst::ClockTime = pipeline.query_duration().unwrap();
 
     loop {
         let sample = match appsink.pull_sample() {
@@ -323,7 +332,7 @@ fn main() {
 
         //let pos: gst::ClockTime = pipeline.query_position().unwrap();
         let pts: gst::ClockTime = buffer.get_pts();
-        let i = (400*pts.nseconds().unwrap()/duration.nseconds().unwrap()) as usize;
+        let i = (width*pts.nseconds().unwrap()/duration.nseconds().unwrap());
 
         {
             let outbuffer = outbuffer.get_mut().unwrap();
@@ -331,9 +340,9 @@ fn main() {
 
             let mut data = outbuffer.map_writable().unwrap();
 
-            for y in 0..400 {
-                let mut dst = &mut data[400*y*4+i*4..400*y*4+i*4+3];
-                let src = &indata[y*4..y*4+3];
+            for y in 0..height {
+                let mut dst = &mut data[(width*y*4+i*4) as usize..(width*y*4+i*4+3) as usize];
+                let src = &indata[(y*4) as usize..(y*4+3) as usize];
                 dst.copy_from_slice(src);
             }
 
