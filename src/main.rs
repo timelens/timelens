@@ -73,7 +73,7 @@ fn parse_config() -> Config {
         height,
         input_filename: String::from(input_filename),
         output_filename: String::from(output_filename),
-        tmp_width: 400,
+        tmp_width: 1,
         preview: matches.is_present("preview"),
         seek_mode: matches.is_present("seek"),
     }
@@ -86,8 +86,50 @@ fn build_input_pipeline(config: &Config) -> (gst::Pipeline, gst::Element, gst_ap
     src.set_property("uri", &uri).unwrap();
 
     let videorate = gst::ElementFactory::make("videorate", None).unwrap();
-    let videoscale = gst::ElementFactory::make("videoscale", None).unwrap();
-    videoscale.set_property("add-borders", &false).unwrap();
+    let videoconvert2 = gst::ElementFactory::make("videoconvert", None).unwrap();
+    let glupload = gst::ElementFactory::make("glupload", None).unwrap();
+    let glshader = gst::ElementFactory::make("glshader", None).unwrap();
+    glshader.set_property("fragment", &"
+#version 130
+
+#ifdef GL_ES
+precision mediump float;
+#endif
+
+varying vec2 v_texcoord;
+uniform sampler2D tex;
+
+void main () {
+    vec2 texturecoord = v_texcoord.xy;
+    vec4 avg = vec4(0.0);
+
+    ivec2 size = textureSize(tex, 0);
+    float in_width = float(size.x);
+
+    for(float x=0.0; x < in_width; x++) {
+        avg += texture2D(tex, vec2(x/in_width, v_texcoord.y));
+    }
+
+    avg /= in_width;
+
+    gl_FragColor = avg;
+}
+    ").unwrap();
+    glshader.set_property("vertex", &"
+#version 130
+
+attribute vec4 a_position;
+attribute vec2 a_texcoord;
+varying vec2 v_texcoord;
+
+void main() {
+    gl_Position = a_position;
+    v_texcoord = a_texcoord;
+}
+                          ").unwrap();
+    let gldownload = gst::ElementFactory::make("gldownload", None).unwrap();
+    //let videoscale = gst::ElementFactory::make("videoscale", None).unwrap();
+    //videoscale.set_property("add-borders", &false).unwrap();
     let videoconvert = gst::ElementFactory::make("videoconvert", None).unwrap();
 
     let capsfilter = gst::ElementFactory::make("capsfilter", None).unwrap();
@@ -114,14 +156,17 @@ fn build_input_pipeline(config: &Config) -> (gst::Pipeline, gst::Element, gst_ap
         .add_many(&[
             &src,
             &videorate,
-            &videoscale,
+            &videoconvert2,
+            &glupload,
+            &glshader,
+            &gldownload,
             &videoconvert,
             &capsfilter,
             &sink,
         ])
         .unwrap();
 
-    gst::Element::link_many(&[&videorate, &videoscale, &videoconvert, &capsfilter, &sink]).unwrap();
+    gst::Element::link_many(&[&videorate, &videoconvert2, &glupload, &glshader, &gldownload, &videoconvert, &capsfilter, &sink]).unwrap();
 
     let appsink = sink.clone()
         .dynamic_cast::<gst_app::AppSink>()
