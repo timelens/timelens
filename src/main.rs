@@ -76,9 +76,9 @@ fn parse_config() -> Config {
         .value_of("input")
         .unwrap_or("/home/seb/library/movies/Blender Shorts/big-buck-bunny.avi");
 
-    let fallback_output = format!("{}.timeline.png", &input_filename);
+    let fallback_output = format!("{}.timeline.jpg", &input_filename);
     let timeline_filename = matches.value_of("timeline").unwrap_or(&fallback_output);
-    let fallback_output2 = format!("{}.thumbnails.png", &input_filename);
+    let fallback_output2 = format!("{}.thumbnails.jpg", &input_filename);
     let thumbnails_filename = matches.value_of("thumbnails").unwrap_or(&fallback_output2);
 
     Config {
@@ -102,6 +102,7 @@ fn build_input_pipeline(config: &Config) -> (gst::Pipeline, gst::Element, gst_ap
     let src = gst::ElementFactory::make("uridecodebin", None).unwrap();
     src.set_property("uri", &uri).unwrap();
 
+    let videoconvert = gst::ElementFactory::make("videoconvert", None).unwrap();
     let videorate = gst::ElementFactory::make("videorate", None).unwrap();
 //    let videoconvert2 = gst::ElementFactory::make("videoconvert", None).unwrap();
 //    let glupload = gst::ElementFactory::make("glupload", None).unwrap();
@@ -147,7 +148,6 @@ fn build_input_pipeline(config: &Config) -> (gst::Pipeline, gst::Element, gst_ap
 //    let gldownload = gst::ElementFactory::make("gldownload", None).unwrap();
     let videoscale = gst::ElementFactory::make("videoscale", None).unwrap();
     videoscale.set_property("add-borders", &false).unwrap();
-    let videoconvert = gst::ElementFactory::make("videoconvert", None).unwrap();
 
     let capsfilter = gst::ElementFactory::make("capsfilter", None).unwrap();
     capsfilter
@@ -156,7 +156,7 @@ fn build_input_pipeline(config: &Config) -> (gst::Pipeline, gst::Element, gst_ap
             &gst::Caps::new_simple(
                 "video/x-raw",
                 &[
-                    ("format", &"RGBA"),
+                    ("format", &"BGRx"),
                     ("framerate", &gst::Fraction::new(1, 1)),
                     ("width", &(config.thumb_width as i32)),
                     ("height", &(config.thumb_height as i32)),
@@ -172,22 +172,22 @@ fn build_input_pipeline(config: &Config) -> (gst::Pipeline, gst::Element, gst_ap
     pipeline
         .add_many(&[
             &src,
+            &videoconvert,
             &videorate,
             &videoscale,
-            &videoconvert,
             &capsfilter,
             &sink,
         ])
         .unwrap();
 
-    gst::Element::link_many(&[&videorate, &videoscale, &videoconvert, &capsfilter, &sink]).unwrap();
+    gst::Element::link_many(&[&videoconvert, &videorate, &videoscale, &capsfilter, &sink]).unwrap();
 
     let appsink = sink.clone()
         .dynamic_cast::<gst_app::AppSink>()
         .expect("Sink element is expected to be an appsink!");
     appsink.set_property("sync", &false).unwrap();
 
-    let convert_clone = videorate.clone();
+    let convert_clone = videoconvert.clone();
     src.connect_pad_added(move |_, src_pad| {
         let convert = &convert_clone;
 
@@ -239,7 +239,7 @@ fn build_output_pipeline(config: &Config) -> (gst::Pipeline, gst_app::AppSrc) {
             &gst::Caps::new_simple(
                 "video/x-raw",
                 &[
-                    ("format", &"RGBA"),
+                    ("format", &"BGRx"),
                     ("framerate", &gst::Fraction::new(1, 1)),
                     ("width", &(config.width as i32)),
                     ("height", &(config.height as i32)),
@@ -248,15 +248,15 @@ fn build_output_pipeline(config: &Config) -> (gst::Pipeline, gst_app::AppSrc) {
         )
         .unwrap();
 
-    let pngenc = gst::ElementFactory::make("pngenc", None).unwrap();
+    let jpegenc = gst::ElementFactory::make("jpegenc", None).unwrap();
     let filesink = gst::ElementFactory::make("filesink", None).unwrap();
     filesink
         .set_property("location", &config.timeline_filename)
         .unwrap();
     output_pipeline
-        .add_many(&[&src, &capsfilter, &pngenc, &filesink])
+        .add_many(&[&src, &capsfilter, &jpegenc, &filesink])
         .unwrap();
-    gst::Element::link_many(&[&src, &capsfilter, &pngenc, &filesink]).unwrap();
+    gst::Element::link_many(&[&src, &capsfilter, &jpegenc, &filesink]).unwrap();
 
     let appsrc = src.clone()
         .dynamic_cast::<gst_app::AppSrc>()
@@ -279,7 +279,7 @@ fn build_output_pipeline2(config: &Config) -> (gst::Pipeline, gst_app::AppSrc) {
             &gst::Caps::new_simple(
                 "video/x-raw",
                 &[
-                ("format", &"RGBA"),
+                ("format", &"BGRx"),
                 ("framerate", &gst::Fraction::new(1, 1)),
                 ("width", &((config.thumb_width*config.thumb_columns) as i32)),
                 ("height", &((config.thumb_height*(config.width/config.thumb_columns+1)) as i32)),
@@ -288,15 +288,15 @@ fn build_output_pipeline2(config: &Config) -> (gst::Pipeline, gst_app::AppSrc) {
                 )
         .unwrap();
 
-    let pngenc = gst::ElementFactory::make("pngenc", None).unwrap();
+    let jpegenc = gst::ElementFactory::make("jpegenc", None).unwrap();
     let filesink = gst::ElementFactory::make("filesink", None).unwrap();
     filesink
         .set_property("location", &config.thumbnails_filename)
         .unwrap();
     output_pipeline
-        .add_many(&[&src, &capsfilter, &pngenc, &filesink])
+        .add_many(&[&src, &capsfilter, &jpegenc, &filesink])
         .unwrap();
-    gst::Element::link_many(&[&src, &capsfilter, &pngenc, &filesink]).unwrap();
+    gst::Element::link_many(&[&src, &capsfilter, &jpegenc, &filesink]).unwrap();
 
     let appsrc = src.clone()
         .dynamic_cast::<gst_app::AppSrc>()
@@ -319,7 +319,7 @@ fn build_preview_pipeline(config: &Config) -> (gst::Pipeline, gst_app::AppSrc) {
             &gst::Caps::new_simple(
                 "video/x-raw",
                 &[
-                    ("format", &"RGBA"),
+                    ("format", &"BGRx"),
                     ("framerate", &gst::Fraction::new(1, 1)),
                     ("width", &(config.width as i32)),
                     ("height", &(config.height as i32)),
@@ -363,7 +363,7 @@ fn build_preview_pipeline2(config: &Config) -> (gst::Pipeline, gst_app::AppSrc) 
             &gst::Caps::new_simple(
                 "video/x-raw",
                 &[
-                ("format", &"RGBA"),
+                ("format", &"BGRx"),
                 ("framerate", &gst::Fraction::new(1, 1)),
                 ("width", &((config.thumb_width*config.thumb_columns) as i32)),
                 ("height", &((config.thumb_height*(config.width/config.thumb_columns+1)) as i32)),
@@ -442,23 +442,23 @@ fn generate_timeline_and_thumbnails(
             let mut data = timeline.map_writable().unwrap();
 
             for y in 0..config.height {
-                let mut r: usize = 0;
-                let mut g: usize = 0;
                 let mut b: usize = 0;
+                let mut g: usize = 0;
+                let mut r: usize = 0;
 
                 for x in 0..config.tmp_width {
-                    r += indata[config.tmp_width * y * 4 + 4 * x] as usize;
+                    b += indata[config.tmp_width * y * 4 + 4 * x] as usize;
                     g += indata[config.tmp_width * y * 4 + 4 * x + 1] as usize;
-                    b += indata[config.tmp_width * y * 4 + 4 * x + 2] as usize;
+                    r += indata[config.tmp_width * y * 4 + 4 * x + 2] as usize;
                 }
 
-                r /= config.tmp_width;
-                g /= config.tmp_width;
                 b /= config.tmp_width;
+                g /= config.tmp_width;
+                r /= config.tmp_width;
 
-                data[config.width * y * 4 + i * 4] = r as u8;
+                data[config.width * y * 4 + i * 4] = b as u8;
                 data[config.width * y * 4 + i * 4 + 1] = g as u8;
-                data[config.width * y * 4 + i * 4 + 2] = b as u8;
+                data[config.width * y * 4 + i * 4 + 2] = r as u8;
                 data[config.width * y * 4 + i * 4 + 3] = 255;
             }
         }
@@ -575,7 +575,7 @@ fn main() {
             &gst::Caps::new_simple(
                 "video/x-raw",
                 &[
-                    ("format", &"RGBA"),
+                    ("format", &"BGRx"),
                     ("framerate", &fps),
                     ("width", &(config.thumb_width as i32)),
                     ("height", &(config.thumb_height as i32)),
@@ -586,14 +586,24 @@ fn main() {
 
     for pipeline in &[&input_pipeline, &output_pipeline, &output_pipeline2, &preview_pipeline, &preview_pipeline2] {
         let bus = pipeline.get_bus().unwrap();
-        bus.connect_message(move |_, msg| if let gst::MessageView::Error(err) = msg.view() {
-                eprintln!(
-                    "Error received from element {:?}: {}",
-                    err.get_src().map(|s| s.get_path_string()),
-                    err.get_error()
-                );
-                eprintln!("Debugging information: {:?}", err.get_debug());
-            }
+        bus.connect_message(move |_, msg| {
+                            match msg.view() {
+                                gst::MessageView::Eos(_) => {
+                                    println!("eos received");
+                                }
+                                gst::MessageView::Error(err) => {
+                                    eprintln!(
+                                        "Error received from element {:?}: {}",
+                                        err.get_src().map(|s| s.get_path_string()),
+                                        err.get_error()
+                                        );
+                                    eprintln!("Debugging information: {:?}", err.get_debug());
+                                }
+                                _ => {
+                                    //println!(".");
+                                }
+                            }
+        }
         );
         bus.add_signal_watch();
     }
