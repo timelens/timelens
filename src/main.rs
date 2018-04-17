@@ -11,6 +11,8 @@ use std::cmp;
 use std::io::Write;
 use std::io::stdout;
 
+use std::fs::File;
+
 use std::{thread, time};
 
 #[derive(Debug)]
@@ -23,6 +25,7 @@ struct Config {
     input_filename: String,
     timeline_filename: String,
     thumbnails_filename: String,
+    vtt_filename: String,
     tmp_width: usize,
     preview: bool,
     seek_mode: bool,
@@ -58,6 +61,12 @@ fn parse_config() -> Config {
             .takes_value(true),
             )
         .arg(
+            Arg::with_name("vtt")
+            .help("Name of VTT output file")
+            .long("vtt")
+            .takes_value(true),
+            )
+        .arg(
             Arg::with_name("preview")
                 .help("Open a preview window")
                 .short("p")
@@ -80,6 +89,8 @@ fn parse_config() -> Config {
     let timeline_filename = matches.value_of("timeline").unwrap_or(&fallback_output);
     let fallback_output2 = format!("{}.thumbnails.jpg", &input_filename);
     let thumbnails_filename = matches.value_of("thumbnails").unwrap_or(&fallback_output2);
+    let fallback_output3 = format!("{}.thumbnails.vtt", &input_filename);
+    let vtt_filename = matches.value_of("vtt").unwrap_or(&fallback_output3);
 
     Config {
         width,
@@ -90,6 +101,7 @@ fn parse_config() -> Config {
         input_filename: String::from(input_filename),
         timeline_filename: String::from(timeline_filename),
         thumbnails_filename: String::from(thumbnails_filename),
+        vtt_filename: String::from(vtt_filename),
         tmp_width: 160,
         preview: matches.is_present("preview"),
         seek_mode: matches.is_present("seek"),
@@ -539,6 +551,15 @@ fn write_result(
     output_src.end_of_stream().into_result().unwrap();
 }
 
+fn write_vtt(config: &Config) {
+    let mut f = File::create(&config.vtt_filename).unwrap();
+    f.write_all(b"WEBVTT\n\n");
+
+    for i in 0..config.width {
+        write!(&mut f, "x --> y\n{}?xywh={},{},{},{}\n\n", config.thumbnails_filename, 1, 2, 3, 4).unwrap();
+    }
+}
+
 fn main() {
     let config = parse_config();
     println!("{:#?}", config);
@@ -615,7 +636,7 @@ fn main() {
 
     write_result(&thumbnails, &output_pipeline2, &output_src2);
     println!("-> '{}'", config.thumbnails_filename);
-
+    write_vtt(&config);
 
     input_pipeline
         .set_state(gst::State::Null)
