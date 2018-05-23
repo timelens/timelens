@@ -10,8 +10,8 @@ use gst::prelude::*;
 
 use std::cmp;
 
-use std::io::Write;
 use std::io::stdout;
+use std::io::Write;
 
 use std::fs::File;
 
@@ -56,16 +56,16 @@ fn parse_config() -> Config {
         )
         .arg(
             Arg::with_name("thumbnails")
-            .help("Name of thumbnails output file")
-            .long("thumbnails")
-            .takes_value(true),
-            )
+                .help("Name of thumbnails output file")
+                .long("thumbnails")
+                .takes_value(true),
+        )
         .arg(
             Arg::with_name("vtt")
-            .help("Name of VTT output file")
-            .long("vtt")
-            .takes_value(true),
-            )
+                .help("Name of VTT output file")
+                .long("vtt")
+                .takes_value(true),
+        )
         .arg(
             Arg::with_name("preview")
                 .help("Open a preview window")
@@ -81,9 +81,7 @@ fn parse_config() -> Config {
     let height_string = matches.value_of("height").unwrap_or("100");
     let height: usize = height_string.parse().expect("Invalid height");
 
-    let input_filename = matches
-        .value_of("input")
-        .unwrap_or("/home/seb/library/movies/Blender Shorts/big-buck-bunny.avi");
+    let input_filename = matches.value_of("input").unwrap();
 
     let fallback_output = format!("{}.timeline.jpg", &input_filename);
     let timeline_filename = matches.value_of("timeline").unwrap_or(&fallback_output);
@@ -116,48 +114,48 @@ fn build_input_pipeline(config: &Config) -> (gst::Pipeline, gst::Element, gst_ap
 
     let videoconvert = gst::ElementFactory::make("videoconvert", None).unwrap();
     let videorate = gst::ElementFactory::make("videorate", None).unwrap();
-//    let videoconvert2 = gst::ElementFactory::make("videoconvert", None).unwrap();
-//    let glupload = gst::ElementFactory::make("glupload", None).unwrap();
-//    let glshader = gst::ElementFactory::make("glshader", None).unwrap();
-//    glshader.set_property("fragment", &"
-//#version 130
-//
-//#ifdef GL_ES
-//precision mediump float;
-//#endif
-//
-//varying vec2 v_texcoord;
-//uniform sampler2D tex;
-//
-//void main () {
-//    vec2 texturecoord = v_texcoord.xy;
-//    vec4 avg = vec4(0.0);
-//
-//    ivec2 size = textureSize(tex, 0);
-//    float in_width = float(size.x);
-//
-//    for(float x=0.0; x < in_width; x++) {
-//        avg += texture2D(tex, vec2(x/in_width, v_texcoord.y));
-//    }
-//
-//    avg /= in_width;
-//
-//    gl_FragColor = avg;
-//}
-//    ").unwrap();
-//    glshader.set_property("vertex", &"
-//#version 130
-//
-//attribute vec4 a_position;
-//attribute vec2 a_texcoord;
-//varying vec2 v_texcoord;
-//
-//void main() {
-//    gl_Position = a_position;
-//    v_texcoord = a_texcoord;
-//}
-//                          ").unwrap();
-//    let gldownload = gst::ElementFactory::make("gldownload", None).unwrap();
+    //    let videoconvert2 = gst::ElementFactory::make("videoconvert", None).unwrap();
+    //    let glupload = gst::ElementFactory::make("glupload", None).unwrap();
+    //    let glshader = gst::ElementFactory::make("glshader", None).unwrap();
+    //    glshader.set_property("fragment", &"
+    //#version 130
+    //
+    //#ifdef GL_ES
+    //precision mediump float;
+    //#endif
+    //
+    //varying vec2 v_texcoord;
+    //uniform sampler2D tex;
+    //
+    //void main () {
+    //    vec2 texturecoord = v_texcoord.xy;
+    //    vec4 avg = vec4(0.0);
+    //
+    //    ivec2 size = textureSize(tex, 0);
+    //    float in_width = float(size.x);
+    //
+    //    for(float x=0.0; x < in_width; x++) {
+    //        avg += texture2D(tex, vec2(x/in_width, v_texcoord.y));
+    //    }
+    //
+    //    avg /= in_width;
+    //
+    //    gl_FragColor = avg;
+    //}
+    //    ").unwrap();
+    //    glshader.set_property("vertex", &"
+    //#version 130
+    //
+    //attribute vec4 a_position;
+    //attribute vec2 a_texcoord;
+    //varying vec2 v_texcoord;
+    //
+    //void main() {
+    //    gl_Position = a_position;
+    //    v_texcoord = a_texcoord;
+    //}
+    //                          ").unwrap();
+    //    let gldownload = gst::ElementFactory::make("gldownload", None).unwrap();
     let videoscale = gst::ElementFactory::make("videoscale", None).unwrap();
     videoscale.set_property("add-borders", &false).unwrap();
 
@@ -291,13 +289,19 @@ fn build_output_pipeline2(config: &Config) -> (gst::Pipeline, gst_app::AppSrc) {
             &gst::Caps::new_simple(
                 "video/x-raw",
                 &[
-                ("format", &"BGRx"),
-                ("framerate", &gst::Fraction::new(1, 1)),
-                ("width", &((config.thumb_width*config.thumb_columns) as i32)),
-                ("height", &((config.thumb_height*(config.width/config.thumb_columns+1)) as i32)),
+                    ("format", &"BGRx"),
+                    ("framerate", &gst::Fraction::new(1, 1)),
+                    (
+                        "width",
+                        &((config.thumb_width * config.thumb_columns) as i32),
+                    ),
+                    (
+                        "height",
+                        &((config.thumb_height * (config.width / config.thumb_columns + 1)) as i32),
+                    ),
                 ],
-                ),
-                )
+            ),
+        )
         .unwrap();
 
     let jpegenc = gst::ElementFactory::make("jpegenc", None).unwrap();
@@ -375,13 +379,19 @@ fn build_preview_pipeline2(config: &Config) -> (gst::Pipeline, gst_app::AppSrc) 
             &gst::Caps::new_simple(
                 "video/x-raw",
                 &[
-                ("format", &"BGRx"),
-                ("framerate", &gst::Fraction::new(1, 1)),
-                ("width", &((config.thumb_width*config.thumb_columns) as i32)),
-                ("height", &((config.thumb_height*(config.width/config.thumb_columns+1)) as i32)),
+                    ("format", &"BGRx"),
+                    ("framerate", &gst::Fraction::new(1, 1)),
+                    (
+                        "width",
+                        &((config.thumb_width * config.thumb_columns) as i32),
+                    ),
+                    (
+                        "height",
+                        &((config.thumb_height * (config.width / config.thumb_columns + 1)) as i32),
+                    ),
                 ],
-                ),
-                )
+            ),
+        )
         .unwrap();
     let videoconvert = gst::ElementFactory::make("videoconvert", None).unwrap();
 
@@ -417,8 +427,10 @@ fn generate_timeline_and_thumbnails(
 ) -> (gst::Buffer, gst::Buffer) {
     let mut timeline = gst::Buffer::with_size(config.width * config.height * 4).unwrap();
 
-    let thumb_rows = config.width/config.thumb_columns + 1;
-    let mut thumbnails = gst::Buffer::with_size(config.thumb_width*config.thumb_columns * config.thumb_height*thumb_rows * 4).unwrap();
+    let thumb_rows = config.width / config.thumb_columns + 1;
+    let mut thumbnails = gst::Buffer::with_size(
+        config.thumb_width * config.thumb_columns * config.thumb_height * thumb_rows * 4,
+    ).unwrap();
 
     let mut done = vec![0; config.width];
 
@@ -484,14 +496,22 @@ fn generate_timeline_and_thumbnails(
 
             for x in 0..config.thumb_width {
                 for y in 0..config.thumb_height {
-                    let r = indata[y*config.thumb_width*4+4*x] as usize;
-                    let g = indata[y*config.thumb_width*4+4*x+1] as usize;
-                    let b = indata[y*config.thumb_width*4+4*x+2] as usize;
+                    let r = indata[y * config.thumb_width * 4 + 4 * x] as usize;
+                    let g = indata[y * config.thumb_width * 4 + 4 * x + 1] as usize;
+                    let b = indata[y * config.thumb_width * 4 + 4 * x + 2] as usize;
 
-                    data[(config.thumb_columns*config.thumb_width*4)*(ty*config.thumb_height+y) + (tx*config.thumb_width+x)*4] = r as u8;
-                    data[(config.thumb_columns*config.thumb_width*4)*(ty*config.thumb_height+y) + (tx*config.thumb_width+x)*4+1] = g as u8;
-                    data[(config.thumb_columns*config.thumb_width*4)*(ty*config.thumb_height+y) + (tx*config.thumb_width+x)*4+2] = b as u8;
-                    data[(config.thumb_columns*config.thumb_width*4)*(ty*config.thumb_height+y) + (tx*config.thumb_width+x)*4+3] = 255 as u8;
+                    data[(config.thumb_columns * config.thumb_width * 4)
+                             * (ty * config.thumb_height + y)
+                             + (tx * config.thumb_width + x) * 4] = r as u8;
+                    data[(config.thumb_columns * config.thumb_width * 4)
+                             * (ty * config.thumb_height + y)
+                             + (tx * config.thumb_width + x) * 4 + 1] = g as u8;
+                    data[(config.thumb_columns * config.thumb_width * 4)
+                             * (ty * config.thumb_height + y)
+                             + (tx * config.thumb_width + x) * 4 + 2] = b as u8;
+                    data[(config.thumb_columns * config.thumb_width * 4)
+                             * (ty * config.thumb_height + y)
+                             + (tx * config.thumb_width + x) * 4 + 3] = 255 as u8;
                 }
             }
         }
@@ -538,7 +558,7 @@ fn generate_timeline_and_thumbnails(
 fn write_result(
     timeline: &gst::Buffer,
     output_pipeline: &gst::Pipeline,
-    output_src: &gst_app::AppSrc
+    output_src: &gst_app::AppSrc,
 ) {
     println!("write started");
     output_pipeline
@@ -557,7 +577,11 @@ fn write_vtt(config: &Config) {
     f.write_all(b"WEBVTT\n\n");
 
     for i in 0..config.width {
-        write!(&mut f, "x --> y\n{}?xywh={},{},{},{}\n\n", config.thumbnails_filename, 1, 2, 3, 4).unwrap();
+        write!(
+            &mut f,
+            "x --> y\n{}?xywh={},{},{},{}\n\n",
+            config.thumbnails_filename, 1, 2, 3, 4
+        ).unwrap();
     }
 }
 
@@ -608,27 +632,31 @@ fn main() {
 
     let main_loop = glib::MainLoop::new(None, false);
 
-    for pipeline in &[&input_pipeline, &output_pipeline, &preview_pipeline, &preview_pipeline2] {
+    for pipeline in &[
+        &input_pipeline,
+        &output_pipeline,
+        &preview_pipeline,
+        &preview_pipeline2,
+    ] {
         let bus = pipeline.get_bus().unwrap();
         bus.connect_message(move |_, msg| {
-                            match msg.view() {
-                                gst::MessageView::Eos(_) => {
-                                    println!("eos received");
-                                }
-                                gst::MessageView::Error(err) => {
-                                    eprintln!(
-                                        "Error received from element {:?}: {}",
-                                        err.get_src().map(|s| s.get_path_string()),
-                                        err.get_error()
-                                        );
-                                    eprintln!("Debugging information: {:?}", err.get_debug());
-                                }
-                                _ => {
-                                    //println!(".");
-                                }
-                            }
-        }
-        );
+            match msg.view() {
+                gst::MessageView::Eos(_) => {
+                    println!("eos received");
+                }
+                gst::MessageView::Error(err) => {
+                    eprintln!(
+                        "Error received from element {:?}: {}",
+                        err.get_src().map(|s| s.get_path_string()),
+                        err.get_error()
+                    );
+                    eprintln!("Debugging information: {:?}", err.get_debug());
+                }
+                _ => {
+                    //println!(".");
+                }
+            }
+        });
         bus.add_signal_watch();
     }
 
@@ -647,19 +675,25 @@ fn main() {
                         "Error received from element {:?}: {}",
                         err.get_src().map(|s| s.get_path_string()),
                         err.get_error()
-                        );
+                    );
                     eprintln!("Debugging information: {:?}", err.get_debug());
                 }
                 _ => {
                     //println!(".");
                 }
             }
-        }
-        );
+        });
         bus.add_signal_watch();
     }
 
-    let (timeline, thumbnails) = generate_timeline_and_thumbnails(&config, &input_pipeline, &appsink, &preview_src, &preview_src2, &duration);
+    let (timeline, thumbnails) = generate_timeline_and_thumbnails(
+        &config,
+        &input_pipeline,
+        &appsink,
+        &preview_src,
+        &preview_src2,
+        &duration,
+    );
 
     println!("gen done");
 
@@ -670,7 +704,7 @@ fn main() {
 
     println!("-> '{}'", config.timeline_filename);
     println!("-> '{}'", config.thumbnails_filename);
-    write_vtt(&config);
+    //write_vtt(&config);
 
     input_pipeline
         .set_state(gst::State::Null)
