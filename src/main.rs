@@ -2,6 +2,8 @@
 extern crate clap;
 use clap::Arg;
 
+extern crate glib;
+
 extern crate gstreamer as gst;
 extern crate gstreamer_app as gst_app;
 use gst::prelude::*;
@@ -12,8 +14,6 @@ use std::io::Write;
 use std::io::stdout;
 
 use std::fs::File;
-
-use std::{thread, time};
 
 #[derive(Debug)]
 struct Config {
@@ -540,6 +540,7 @@ fn write_result(
     output_pipeline: &gst::Pipeline,
     output_src: &gst_app::AppSrc
 ) {
+    println!("write started");
     output_pipeline
         .set_state(gst::State::Playing)
         .into_result()
@@ -605,7 +606,9 @@ fn main() {
         )
         .unwrap();
 
-    for pipeline in &[&input_pipeline, &output_pipeline, &output_pipeline2, &preview_pipeline, &preview_pipeline2] {
+    let main_loop = glib::MainLoop::new(None, false);
+
+    for pipeline in &[&input_pipeline, &output_pipeline, &preview_pipeline, &preview_pipeline2] {
         let bus = pipeline.get_bus().unwrap();
         bus.connect_message(move |_, msg| {
                             match msg.view() {
@@ -629,12 +632,43 @@ fn main() {
         bus.add_signal_watch();
     }
 
+    for pipeline in &[&output_pipeline2] {
+        let bus = pipeline.get_bus().unwrap();
+        let main_loop_clone = main_loop.clone();
+        bus.connect_message(move |_, msg| {
+            match msg.view() {
+                gst::MessageView::Eos(_) => {
+                    println!("eos received");
+
+                    main_loop_clone.quit();
+                }
+                gst::MessageView::Error(err) => {
+                    eprintln!(
+                        "Error received from element {:?}: {}",
+                        err.get_src().map(|s| s.get_path_string()),
+                        err.get_error()
+                        );
+                    eprintln!("Debugging information: {:?}", err.get_debug());
+                }
+                _ => {
+                    //println!(".");
+                }
+            }
+        }
+        );
+        bus.add_signal_watch();
+    }
+
     let (timeline, thumbnails) = generate_timeline_and_thumbnails(&config, &input_pipeline, &appsink, &preview_src, &preview_src2, &duration);
 
-    write_result(&timeline, &output_pipeline, &output_src);
-    println!("-> '{}'", config.timeline_filename);
+    println!("gen done");
 
+    write_result(&timeline, &output_pipeline, &output_src);
     write_result(&thumbnails, &output_pipeline2, &output_src2);
+
+    main_loop.run();
+
+    println!("-> '{}'", config.timeline_filename);
     println!("-> '{}'", config.thumbnails_filename);
     write_vtt(&config);
 
@@ -658,9 +692,4 @@ fn main() {
         .set_state(gst::State::Null)
         .into_result()
         .unwrap();
-
-    output_pipeline2.get_state(10 * gst::SECOND);
-
-    let sec = time::Duration::from_secs(5);
-    thread::sleep(sec);
 }
