@@ -440,7 +440,6 @@ fn generate_timeline_and_thumbnails(
         let sample = match appsink.pull_sample() {
             None => {
                 // we are probably at the end
-                println!("eos?");
                 return (timeline, thumbnails);
             }
             Some(sample) => sample,
@@ -536,7 +535,6 @@ fn generate_timeline_and_thumbnails(
 
         if !done.contains(&0) {
             // we are done
-            println!("done!");
             return (timeline, thumbnails);
         }
 
@@ -560,7 +558,6 @@ fn write_result(
     output_pipeline: &gst::Pipeline,
     output_src: &gst_app::AppSrc,
 ) {
-    println!("write started");
     output_pipeline
         .set_state(gst::State::Playing)
         .into_result()
@@ -587,7 +584,6 @@ fn write_vtt(config: &Config) {
 
 fn main() {
     let config = parse_config();
-    println!("{:#?}", config);
 
     // Initialize GStreamer
     gst::init().unwrap();
@@ -639,23 +635,17 @@ fn main() {
         &preview_pipeline2,
     ] {
         let bus = pipeline.get_bus().unwrap();
-        bus.connect_message(move |_, msg| {
-            match msg.view() {
-                gst::MessageView::Eos(_) => {
-                    println!("eos received");
-                }
-                gst::MessageView::Error(err) => {
-                    eprintln!(
-                        "Error received from element {:?}: {}",
-                        err.get_src().map(|s| s.get_path_string()),
-                        err.get_error()
-                    );
-                    eprintln!("Debugging information: {:?}", err.get_debug());
-                }
-                _ => {
-                    //println!(".");
-                }
+        bus.connect_message(move |_, msg| match msg.view() {
+            gst::MessageView::Eos(_) => {}
+            gst::MessageView::Error(err) => {
+                eprintln!(
+                    "Error received from element {:?}: {}",
+                    err.get_src().map(|s| s.get_path_string()),
+                    err.get_error()
+                );
+                eprintln!("Debugging information: {:?}", err.get_debug());
             }
+            _ => {}
         });
         bus.add_signal_watch();
     }
@@ -666,8 +656,6 @@ fn main() {
         bus.connect_message(move |_, msg| {
             match msg.view() {
                 gst::MessageView::Eos(_) => {
-                    println!("eos received");
-
                     main_loop_clone.quit();
                 }
                 gst::MessageView::Error(err) => {
@@ -694,8 +682,6 @@ fn main() {
         &preview_src2,
         &duration,
     );
-
-    println!("gen done");
 
     write_result(&timeline, &output_pipeline, &output_src);
     write_result(&thumbnails, &output_pipeline2, &output_src2);
