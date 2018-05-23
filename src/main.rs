@@ -81,7 +81,7 @@ fn parse_config() -> Config {
     let height_string = matches.value_of("height").unwrap_or("100");
     let height: usize = height_string.parse().expect("Invalid height");
 
-    let input_filename = matches.value_of("input").unwrap();
+    let input_filename = matches.value_of("input").expect("No input file specified");
 
     let fallback_output = format!("{}.timeline.jpg", &input_filename);
     let timeline_filename = matches.value_of("timeline").unwrap_or(&fallback_output);
@@ -458,7 +458,7 @@ fn generate_timeline_and_thumbnails(
         );
 
         let progress = 100 * pts.nseconds().unwrap() / duration.nseconds().unwrap();
-        print!("\rnordlicht: {}% ", progress);
+        print!("\rtimelens: {}% ", progress);
         stdout().flush().unwrap();
 
         {
