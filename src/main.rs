@@ -13,7 +13,9 @@ use std::cmp;
 use std::io::stdout;
 use std::io::Write;
 
+use std::fs;
 use std::fs::File;
+use std::path::PathBuf;
 
 #[derive(Debug)]
 struct Config {
@@ -107,7 +109,13 @@ fn parse_config() -> Config {
 }
 
 fn build_input_pipeline(config: &Config) -> (gst::Pipeline, gst::Element, gst_app::AppSink) {
-    let uri = format!("file://{}", config.input_filename);
+    let uri = format!(
+        "file://{}",
+        fs::canonicalize(&PathBuf::from(config.input_filename.as_str()))
+            .unwrap()
+            .to_str()
+            .unwrap()
+    );
 
     let src = gst::ElementFactory::make("uridecodebin", None).unwrap();
     src.set_property("uri", &uri).unwrap();
