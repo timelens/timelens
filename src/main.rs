@@ -15,6 +15,7 @@ use std::io::Write;
 
 use std::fs;
 use std::fs::File;
+use std::path::Path;
 use std::path::PathBuf;
 
 #[derive(Debug)]
@@ -530,15 +531,41 @@ fn write_result(
     output_src.end_of_stream().into_result().unwrap();
 }
 
-fn write_vtt(config: &Config) {
+fn write_vtt(config: &Config, duration: &gst::ClockTime) {
+    let mseconds = duration.mseconds().unwrap() as i32;
+
     let mut f = File::create(&config.vtt_filename).unwrap();
     f.write_all(b"WEBVTT\n\n");
 
     for i in 0..config.width {
+        let from = mseconds / &(config.width as i32) * (i as i32);
+        let to = mseconds / &(config.width as i32) * ((i as i32) + 1);
+
+        let tx = i % &config.thumb_columns;
+        let ty = i / &config.thumb_columns;
+
+        let x = tx * &config.thumb_width;
+        let y = ty * &config.thumb_height;
+
+        let w = &config.thumb_width;
+        let h = &config.thumb_height;
+
+        let filename = Path::new(&config.thumbnails_filename)
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap();
+
         write!(
             &mut f,
-            "x --> y\n{}?xywh={},{},{},{}\n\n",
-            config.thumbnails_filename, 1, 2, 3, 4
+            "{} --> {}\n{}?xywh={},{},{},{}\n\n",
+            timestamp(from),
+            timestamp(to),
+            filename,
+            x,
+            y,
+            w,
+            h
         ).unwrap();
     }
 }
@@ -647,7 +674,8 @@ fn main() {
 
     println!("-> '{}'", config.timeline_filename);
     println!("-> '{}'", config.thumbnails_filename);
-    //write_vtt(&config);
+    write_vtt(&config, &duration);
+    println!("-> '{}'", config.vtt_filename);
 
     input_pipeline
         .set_state(gst::State::Null)
@@ -669,4 +697,11 @@ fn main() {
         .set_state(gst::State::Null)
         .into_result()
         .unwrap();
+}
+
+fn timestamp(mseconds_total: i32) -> String {
+    let minutes = mseconds_total / (1000 * 60);
+    let seconds = (mseconds_total - 1000 * 60 * minutes) / 1000;
+    let mseconds = mseconds_total - seconds * 1000 - minutes * 1000 * 60;
+    format!("{:02}:{:02}.{:03}", minutes, seconds, mseconds)
 }
