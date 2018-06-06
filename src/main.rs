@@ -122,48 +122,6 @@ fn build_input_pipeline(config: &Config) -> (gst::Pipeline, gst::Element, gst_ap
 
     let videoconvert = gst::ElementFactory::make("videoconvert", None).unwrap();
     let videorate = gst::ElementFactory::make("videorate", None).unwrap();
-    //    let videoconvert2 = gst::ElementFactory::make("videoconvert", None).unwrap();
-    //    let glupload = gst::ElementFactory::make("glupload", None).unwrap();
-    //    let glshader = gst::ElementFactory::make("glshader", None).unwrap();
-    //    glshader.set_property("fragment", &"
-    //#version 130
-    //
-    //#ifdef GL_ES
-    //precision mediump float;
-    //#endif
-    //
-    //varying vec2 v_texcoord;
-    //uniform sampler2D tex;
-    //
-    //void main () {
-    //    vec2 texturecoord = v_texcoord.xy;
-    //    vec4 avg = vec4(0.0);
-    //
-    //    ivec2 size = textureSize(tex, 0);
-    //    float in_width = float(size.x);
-    //
-    //    for(float x=0.0; x < in_width; x++) {
-    //        avg += texture2D(tex, vec2(x/in_width, v_texcoord.y));
-    //    }
-    //
-    //    avg /= in_width;
-    //
-    //    gl_FragColor = avg;
-    //}
-    //    ").unwrap();
-    //    glshader.set_property("vertex", &"
-    //#version 130
-    //
-    //attribute vec4 a_position;
-    //attribute vec2 a_texcoord;
-    //varying vec2 v_texcoord;
-    //
-    //void main() {
-    //    gl_Position = a_position;
-    //    v_texcoord = a_texcoord;
-    //}
-    //                          ").unwrap();
-    //    let gldownload = gst::ElementFactory::make("gldownload", None).unwrap();
     let videoscale = gst::ElementFactory::make("videoscale", None).unwrap();
     videoscale.set_property("add-borders", &false).unwrap();
 
@@ -536,11 +494,6 @@ fn generate_timeline_and_thumbnails(
 
         done[i as usize] += 1;
 
-        //for n in &done {
-        //    print!("{}", n);
-        //    stdout().flush().unwrap();
-        //}
-
         if !done.contains(&0) {
             // we are done
             return (timeline, thumbnails);
@@ -661,23 +614,19 @@ fn main() {
     for pipeline in &[&output_pipeline2] {
         let bus = pipeline.get_bus().unwrap();
         let main_loop_clone = main_loop.clone();
-        bus.connect_message(move |_, msg| {
-            match msg.view() {
-                gst::MessageView::Eos(_) => {
-                    main_loop_clone.quit();
-                }
-                gst::MessageView::Error(err) => {
-                    eprintln!(
-                        "Error received from element {:?}: {}",
-                        err.get_src().map(|s| s.get_path_string()),
-                        err.get_error()
-                    );
-                    eprintln!("Debugging information: {:?}", err.get_debug());
-                }
-                _ => {
-                    //println!(".");
-                }
+        bus.connect_message(move |_, msg| match msg.view() {
+            gst::MessageView::Eos(_) => {
+                main_loop_clone.quit();
             }
+            gst::MessageView::Error(err) => {
+                eprintln!(
+                    "Error received from element {:?}: {}",
+                    err.get_src().map(|s| s.get_path_string()),
+                    err.get_error()
+                );
+                eprintln!("Debugging information: {:?}", err.get_debug());
+            }
+            _ => {}
         });
         bus.add_signal_watch();
     }
