@@ -96,17 +96,60 @@ fn parse_config() -> Config {
     Config {
         width,
         height,
-        thumb_width: 160,
+        thumb_width: 0,
         thumb_height: height,
         thumb_columns: 20,
         input_filename: String::from(input_filename),
         timeline_filename: String::from(timeline_filename),
         thumbnails_filename: String::from(thumbnails_filename),
         vtt_filename: String::from(vtt_filename),
-        tmp_width: 160,
+        tmp_width: 0,
         preview: matches.is_present("preview"),
         seek_mode: matches.is_present("seek"),
     }
+}
+
+fn get_resolution(config: &Config) -> (i32, i32) {
+    let pipeline = gst::Pipeline::new(None);
+
+    let uri = format!(
+        "file://{}",
+        fs::canonicalize(&PathBuf::from(config.input_filename.as_str()))
+            .unwrap()
+            .to_str()
+            .unwrap()
+    );
+
+    let fakesink = gst::ElementFactory::make("fakesink", None).unwrap();
+
+    let src = gst::ElementFactory::make("playbin", None).unwrap();
+    src.set_property("uri", &uri).unwrap();
+    src.set_property("video-sink", &fakesink).unwrap();
+
+    pipeline.add(&src);
+
+    pipeline.set_state(gst::State::Paused);
+    pipeline.get_state(10 * gst::SECOND);
+
+    let pad = src.emit("get-video-pad", &[&0]).unwrap().unwrap();
+    let pad = pad.get::<gst::Pad>().unwrap();
+    let caps = pad.get_current_caps().unwrap();
+    let width = caps.get_structure(0)
+        .unwrap()
+        .get_value("width")
+        .unwrap()
+        .get::<i32>()
+        .unwrap();
+    let height = caps.get_structure(0)
+        .unwrap()
+        .get_value("height")
+        .unwrap()
+        .get::<i32>()
+        .unwrap();
+
+    pipeline.set_state(gst::State::Null);
+
+    (width, height)
 }
 
 fn build_input_pipeline(config: &Config) -> (gst::Pipeline, gst::Element, gst_app::AppSink) {
@@ -571,10 +614,15 @@ fn write_vtt(config: &Config, duration: &gst::ClockTime) {
 }
 
 fn main() {
-    let config = parse_config();
+    let mut config = parse_config();
 
     // Initialize GStreamer
     gst::init().unwrap();
+
+    let (width, height) = get_resolution(&config);
+    let aspect_ratio = (1000 * width / height) as usize;
+    config.thumb_width = config.thumb_height * aspect_ratio / 1000;
+    config.tmp_width = config.thumb_height * aspect_ratio / 1000;
 
     let (input_pipeline, capsfilter, appsink) = build_input_pipeline(&config);
     let (output_pipeline, output_src) = build_output_pipeline(&config);
