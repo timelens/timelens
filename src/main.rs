@@ -18,11 +18,6 @@ use std::fs::File;
 use std::path::Path;
 use std::path::PathBuf;
 
-use std::sync::mpsc::channel;
-use std::sync::mpsc::Receiver;
-use std::sync::mpsc::Sender;
-use std::thread;
-
 // Config objects are used to describe a single Timeline run
 #[derive(Debug, Clone)]
 struct Config {
@@ -322,80 +317,83 @@ fn build_output_pipeline(
     (output_pipeline, appsrc)
 }
 
-fn get_thumbnails(config: Config, tx: Sender<gst::Sample>) {
-    thread::spawn(move || {
-        let (input_pipeline, capsfilter, appsink) = build_input_pipeline(&config);
+fn get_thumbnails(config: &Config) -> Vec<gst::Sample> {
+    let mut thumbnails = vec![];
 
-        // set the input pipeline to paused to fill the buffers
+    let (input_pipeline, capsfilter, appsink) = build_input_pipeline(&config);
+
+    // set the input pipeline to paused to fill the buffers
+    input_pipeline
+        .set_state(gst::State::Paused)
+        .into_result()
+        .unwrap();
+    input_pipeline.get_state(10 * gst::SECOND);
+
+    // if we don't seek, start playing
+    if !config.seek_mode {
         input_pipeline
-            .set_state(gst::State::Paused)
+            .set_state(gst::State::Playing)
             .into_result()
             .unwrap();
-        input_pipeline.get_state(10 * gst::SECOND);
+    }
 
-        // if we don't seek, start playing
-        if !config.seek_mode {
+    let duration: gst::ClockTime = input_pipeline.query_duration().unwrap();
+    let fps = gst::Fraction::new(config.width as i32, duration.seconds().unwrap() as i32);
+
+    capsfilter
+        .set_property(
+            "caps",
+            &gst::Caps::new_simple(
+                "video/x-raw",
+                &[
+                    ("format", &"BGRx"),
+                    ("framerate", &fps),
+                    ("width", &(config.thumb_width as i32)),
+                    ("height", &(config.thumb_height as i32)),
+                ],
+            ),
+        )
+        .unwrap();
+
+    let mut next_column = 0;
+
+    loop {
+        match appsink.pull_sample() {
+            Some(sample) => thumbnails.push(sample),
+            None => {
+                // we are probably at the end
+                input_pipeline
+                    .set_state(gst::State::Null)
+                    .into_result()
+                    .unwrap();
+
+                return thumbnails;
+            }
+        };
+
+        let progress = 100 * next_column / config.width;
+        print!("\rtimelens: {}% ", progress);
+        stdout().flush().unwrap();
+
+        next_column += 1;
+
+        if config.seek_mode {
+            let j = (duration.nseconds().unwrap() as usize) / config.width * next_column;
+
             input_pipeline
-                .set_state(gst::State::Playing)
-                .into_result()
+                .seek_simple(
+                    gst::SeekFlags::FLUSH, // | gst::SeekFlags::KEY_UNIT,
+                    (j as u64) * gst::NSECOND,
+                )
                 .unwrap();
         }
-
-        let duration: gst::ClockTime = input_pipeline.query_duration().unwrap();
-        let fps = gst::Fraction::new(config.width as i32, duration.seconds().unwrap() as i32);
-
-        capsfilter
-            .set_property(
-                "caps",
-                &gst::Caps::new_simple(
-                    "video/x-raw",
-                    &[
-                        ("format", &"BGRx"),
-                        ("framerate", &fps),
-                        ("width", &(config.thumb_width as i32)),
-                        ("height", &(config.thumb_height as i32)),
-                    ],
-                ),
-            )
-            .unwrap();
-
-        let mut next_column = 0;
-
-        loop {
-            match appsink.pull_sample() {
-                Some(sample) => tx.send(sample),
-                None => {
-                    // we are probably at the end
-                    drop(tx);
-
-                    input_pipeline
-                        .set_state(gst::State::Null)
-                        .into_result()
-                        .unwrap();
-
-                    break;
-                }
-            };
-            if config.seek_mode {
-                next_column += 1;
-
-                let j = (duration.nseconds().unwrap() as usize) / config.width * next_column;
-
-                input_pipeline
-                    .seek_simple(
-                        gst::SeekFlags::FLUSH, // | gst::SeekFlags::KEY_UNIT,
-                        (j as u64) * gst::NSECOND,
-                    )
-                    .unwrap();
-            }
-        }
-    });
+    }
 }
 
 // the hard part: actually create timeline and thumbnails file
 fn generate_timeline_and_thumbnails(
     config: &Config,
-    rx: Receiver<gst::Sample>,
+    thumbnails_vec: &Vec<gst::Sample>,
     duration: &gst::ClockTime,
 ) -> (gst::Buffer, gst::Buffer) {
     let mut timeline = gst::Buffer::with_size(config.width * config.height * 4).unwrap();
@@ -407,15 +405,7 @@ fn generate_timeline_and_thumbnails(
 
     let mut done = vec![0; config.width];
 
-    loop {
-        let sample = match rx.recv() {
-            Ok(sample) => sample,
-            _ => {
-                // no more frames, return
-                return (timeline, thumbnails);
-            }
-        };
-
+    for sample in thumbnails_vec {
         let buffer = sample.get_buffer().unwrap();
         let map = buffer.map_readable().unwrap();
         let indata = map.as_slice();
@@ -427,9 +417,11 @@ fn generate_timeline_and_thumbnails(
             config.width - 1,
         );
 
+        /*
         let progress = 100 * pts.nseconds().unwrap() / duration.nseconds().unwrap();
         print!("\rtimelens: {}% ", progress);
         stdout().flush().unwrap();
+        */
 
         {
             let timeline = timeline.get_mut().unwrap();
@@ -493,6 +485,8 @@ fn generate_timeline_and_thumbnails(
             return (timeline, thumbnails);
         }
     }
+
+    return (timeline, thumbnails);
 }
 
 // push a buffer into an output pipeline and wait for EOS
@@ -565,8 +559,7 @@ fn main() {
     config.thumb_width = config.thumb_height * aspect_ratio / 1000;
     config.tmp_width = config.thumb_height * aspect_ratio / 1000;
 
-    let (tx, rx) = channel();
-    get_thumbnails(config.clone(), tx);
+    let thumbnails = get_thumbnails(&config);
 
     // build output pipelines
     let (output_pipeline, output_src) = build_output_pipeline(
@@ -622,7 +615,7 @@ fn main() {
         bus.add_signal_watch();
     }
 
-    let (timeline, thumbnails) = generate_timeline_and_thumbnails(&config, rx, &duration);
+    let (timeline, thumbnails) = generate_timeline_and_thumbnails(&config, &thumbnails, &duration);
 
     write_result(&timeline, &output_pipeline, &output_src);
     write_result(&thumbnails, &output_pipeline2, &output_src2);
