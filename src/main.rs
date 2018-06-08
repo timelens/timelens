@@ -13,14 +13,14 @@ use std::cmp;
 use std::io::stdout;
 use std::io::Write;
 
-use std::fs;
 use std::fs::File;
 use std::path::Path;
-use std::path::PathBuf;
+
+mod source;
 
 // Config objects are used to describe a single Timeline run
 #[derive(Debug, Clone)]
-struct Config {
+pub struct Config {
     width: usize,
     height: usize,
     thumb_width: usize,
@@ -114,166 +114,6 @@ fn timestamp(mseconds_total: i32) -> String {
     format!("{:02}:{:02}.{:03}", minutes, seconds, mseconds)
 }
 
-// get resolution and duration of the input file
-fn get_meta(config: &Config) -> (i32, i32, gst::ClockTime) {
-    // generate file:// URI from an absolute filename
-    let uri = format!(
-        "file://{}",
-        fs::canonicalize(&PathBuf::from(config.input_filename.as_str()))
-            .unwrap()
-            .to_str()
-            .unwrap()
-    );
-
-    // set up a playbin element, which automatically select decoders
-    let playbin = gst::ElementFactory::make("playbin", None).unwrap();
-    playbin.set_property("uri", &uri).unwrap();
-
-    // we don't actually want any output, so we connect the playbin to a fakesink
-    let fakesink = gst::ElementFactory::make("fakesink", None).unwrap();
-    playbin.set_property("video-sink", &fakesink).unwrap();
-
-    // create a pipeline and add the playbin to it
-    let pipeline = gst::Pipeline::new(None);
-    pipeline.add(&playbin).unwrap();
-
-    // set pipeline state to "paused" to start pad negotiation
-    pipeline
-        .set_state(gst::State::Paused)
-        .into_result()
-        .unwrap();
-    pipeline.get_state(10 * gst::SECOND);
-
-    // get the sinkpad of the first video stream
-    let pad = playbin
-        .emit("get-video-pad", &[&0])
-        .unwrap()
-        .unwrap()
-        .get::<gst::Pad>()
-        .unwrap();
-
-    // and retrieve width and height from its caps
-    let caps = pad.get_current_caps().unwrap();
-    let width = caps.get_structure(0)
-        .unwrap()
-        .get_value("width")
-        .unwrap()
-        .get::<i32>()
-        .unwrap();
-    let height = caps.get_structure(0)
-        .unwrap()
-        .get_value("height")
-        .unwrap()
-        .get::<i32>()
-        .unwrap();
-    let duration: gst::ClockTime = pipeline.query_duration().unwrap();
-
-    pipeline.set_state(gst::State::Null).into_result().unwrap();
-
-    (width, height, duration)
-}
-
-// build a pipeline that decodes the video to BGRx at 1 FPS, scales the frames to thumbnail size,
-// and hands it to an Appsink
-fn build_input_pipeline(config: &Config) -> (gst::Pipeline, gst::Element, gst_app::AppSink) {
-    let uri = format!(
-        "file://{}",
-        fs::canonicalize(&PathBuf::from(config.input_filename.as_str()))
-            .unwrap()
-            .to_str()
-            .unwrap()
-    );
-
-    let src = gst::ElementFactory::make("uridecodebin", None).unwrap();
-    src.set_property("uri", &uri).unwrap();
-
-    let videoconvert = gst::ElementFactory::make("videoconvert", None).unwrap();
-    let videorate = gst::ElementFactory::make("videorate", None).unwrap();
-    let videoscale = gst::ElementFactory::make("videoscale", None).unwrap();
-    // scale frames exactly to the desired size, don't add borders
-    videoscale.set_property("add-borders", &false).unwrap();
-
-    let capsfilter = gst::ElementFactory::make("capsfilter", None).unwrap();
-    capsfilter
-        .set_property(
-            "caps",
-            &gst::Caps::new_simple(
-                "video/x-raw",
-                &[
-                    ("format", &"BGRx"),
-                    ("framerate", &gst::Fraction::new(1, 1)),
-                    ("width", &(config.thumb_width as i32)),
-                    ("height", &(config.thumb_height as i32)),
-                ],
-            ),
-        )
-        .unwrap();
-
-    let sink = gst::ElementFactory::make("appsink", None).unwrap();
-
-    let pipeline = gst::Pipeline::new(None);
-
-    pipeline
-        .add_many(&[
-            &src,
-            &videoconvert,
-            &videorate,
-            &videoscale,
-            &capsfilter,
-            &sink,
-        ])
-        .unwrap();
-
-    gst::Element::link_many(&[&videoconvert, &videorate, &videoscale, &capsfilter, &sink]).unwrap();
-
-    let appsink = sink.clone()
-        .dynamic_cast::<gst_app::AppSink>()
-        .expect("Sink element is expected to be an appsink!");
-    // go as fast as possible :)
-    appsink.set_property("sync", &false).unwrap();
-
-    // when a new source pad opens on the decodebin, connect it to the videoconvert element.
-    // this code is required because media files might contain no (or many) video strems, this is
-    // not known before the pipeline is started.
-    let convert_clone = videoconvert.clone();
-    src.connect_pad_added(move |_, src_pad| {
-        let convert = &convert_clone;
-
-        let sink_pad = convert
-            .get_static_pad("sink")
-            .expect("Failed to get static sink pad from convert");
-
-        if sink_pad.is_linked() {
-            // we are already linked. ignoring.
-            return;
-        }
-
-        let new_pad_caps = src_pad
-            .get_current_caps()
-            .expect("Failed to get caps of new pad.");
-        let new_pad_struct = new_pad_caps
-            .get_structure(0)
-            .expect("Failed to get first structure of caps.");
-        let new_pad_type = new_pad_struct.get_name();
-
-        let is_audio = new_pad_type.starts_with("video/x-raw");
-        if !is_audio {
-            println!(
-                "It has type {} which is not raw video. Ignoring.",
-                new_pad_type
-            );
-            return;
-        }
-
-        let ret = src_pad.link(&sink_pad);
-        if ret != gst::PadLinkReturn::Ok {
-            println!("Type is {} but link failed.", new_pad_type);
-        }
-    });
-
-    (pipeline, capsfilter, appsink)
-}
-
 // build a pipeline that writes the first frame pushed into the Appsrc to a JPEG file
 fn build_output_pipeline(
     width: i32,
@@ -317,84 +157,10 @@ fn build_output_pipeline(
     (output_pipeline, appsrc)
 }
 
-fn get_thumbnails(config: &Config) -> Vec<gst::Sample> {
-    let mut thumbnails = vec![];
-
-    let (input_pipeline, capsfilter, appsink) = build_input_pipeline(&config);
-
-    // set the input pipeline to paused to fill the buffers
-    input_pipeline
-        .set_state(gst::State::Paused)
-        .into_result()
-        .unwrap();
-    input_pipeline.get_state(10 * gst::SECOND);
-
-    // if we don't seek, start playing
-    if !config.seek_mode {
-        input_pipeline
-            .set_state(gst::State::Playing)
-            .into_result()
-            .unwrap();
-    }
-
-    let duration: gst::ClockTime = input_pipeline.query_duration().unwrap();
-    let fps = gst::Fraction::new(config.width as i32, duration.seconds().unwrap() as i32);
-
-    capsfilter
-        .set_property(
-            "caps",
-            &gst::Caps::new_simple(
-                "video/x-raw",
-                &[
-                    ("format", &"BGRx"),
-                    ("framerate", &fps),
-                    ("width", &(config.thumb_width as i32)),
-                    ("height", &(config.thumb_height as i32)),
-                ],
-            ),
-        )
-        .unwrap();
-
-    let mut next_column = 0;
-
-    loop {
-        match appsink.pull_sample() {
-            Some(sample) => thumbnails.push(sample),
-            None => {
-                // we are probably at the end
-                input_pipeline
-                    .set_state(gst::State::Null)
-                    .into_result()
-                    .unwrap();
-
-                return thumbnails;
-            }
-        };
-
-        let progress = 100 * next_column / config.width;
-        print!("\rtimelens: {}% ", progress);
-        stdout().flush().unwrap();
-
-        next_column += 1;
-
-        if config.seek_mode {
-            let j = (duration.nseconds().unwrap() as usize) / config.width * next_column;
-
-            input_pipeline
-                .seek_simple(
-                    gst::SeekFlags::FLUSH, // | gst::SeekFlags::KEY_UNIT,
-                    (j as u64) * gst::NSECOND,
-                )
-                .unwrap();
-        }
-    }
-}
-
 // the hard part: actually create timeline and thumbnails file
 fn generate_timeline_and_thumbnails(
     config: &Config,
-    thumbnails_vec: &Vec<gst::Sample>,
-    duration: &gst::ClockTime,
+    source: source::VideoSource,
 ) -> (gst::Buffer, gst::Buffer) {
     let mut timeline = gst::Buffer::with_size(config.width * config.height * 4).unwrap();
 
@@ -404,8 +170,9 @@ fn generate_timeline_and_thumbnails(
     ).unwrap();
 
     let mut done = vec![0; config.width];
+    let duration = source.duration;
 
-    for sample in thumbnails_vec {
+    for sample in source {
         let buffer = sample.get_buffer().unwrap();
         let map = buffer.map_readable().unwrap();
         let indata = map.as_slice();
@@ -413,15 +180,13 @@ fn generate_timeline_and_thumbnails(
         let pts: gst::ClockTime = buffer.get_pts();
         let i = cmp::min(
             config.width * (pts.nseconds().unwrap() as usize)
-                / (duration.nseconds().unwrap() as usize),
+                / ((duration * 1_000_000_000.0) as usize),
             config.width - 1,
         );
 
-        /*
-        let progress = 100 * pts.nseconds().unwrap() / duration.nseconds().unwrap();
+        let progress = 100 * pts.nseconds().unwrap() / (duration as u64 * 1_000_000_000);
         print!("\rtimelens: {}% ", progress);
         stdout().flush().unwrap();
-        */
 
         {
             let timeline = timeline.get_mut().unwrap();
@@ -486,7 +251,7 @@ fn generate_timeline_and_thumbnails(
         }
     }
 
-    return (timeline, thumbnails);
+    (timeline, thumbnails)
 }
 
 // push a buffer into an output pipeline and wait for EOS
@@ -507,8 +272,8 @@ fn write_result(
 }
 
 // write a WebVTT file pointing to the thumbnail locations
-fn write_vtt(config: &Config, duration: &gst::ClockTime) {
-    let mseconds = duration.mseconds().unwrap() as i32;
+fn write_vtt(config: &Config, duration: f32) {
+    let mseconds = (duration * 1_000_000.0) as i32;
 
     let mut f = File::create(&config.vtt_filename).unwrap();
     f.write_all(b"WEBVTT\n\n").unwrap();
@@ -553,13 +318,10 @@ fn main() {
     // initialize GStreamer
     gst::init().unwrap();
 
-    // calculate desired thumbnail width
-    let (width, height, duration) = get_meta(&config);
-    let aspect_ratio = (1000 * width / height) as usize;
-    config.thumb_width = config.thumb_height * aspect_ratio / 1000;
-    config.tmp_width = config.thumb_height * aspect_ratio / 1000;
-
-    let thumbnails = get_thumbnails(&config);
+    let source =
+        source::VideoSource::new(&config.input_filename, config.thumb_height, config.width);
+    config.thumb_width = source.width;
+    config.tmp_width = source.width;
 
     // build output pipelines
     let (output_pipeline, output_src) = build_output_pipeline(
@@ -568,32 +330,12 @@ fn main() {
         &config.timeline_filename,
     );
     let (output_pipeline2, output_src2) = build_output_pipeline(
-        ((config.thumb_width * config.thumb_columns) as i32),
-        ((config.thumb_height * (config.width / config.thumb_columns + 1)) as i32),
+        (config.thumb_width * config.thumb_columns) as i32,
+        (config.thumb_height * (config.width / config.thumb_columns + 1)) as i32,
         &config.thumbnails_filename,
     );
 
-    let fps = gst::Fraction::new(config.width as i32, duration.seconds().unwrap() as i32);
-
     let main_loop = glib::MainLoop::new(None, false);
-
-    /*for pipeline in &[&input_pipeline, &output_pipeline] {
-        let bus = pipeline.get_bus().unwrap();
-        bus.connect_message(move |_, msg| match msg.view() {
-            gst::MessageView::Eos(_) => {}
-            gst::MessageView::Error(err) => {
-                eprintln!(
-                    "Error received from element {:?}: {}",
-                    err.get_src().map(|s| s.get_path_string()),
-                    err.get_error()
-                );
-                eprintln!("Debugging information: {:?}", err.get_debug());
-            }
-            _ => {}
-        });
-        bus.add_signal_watch();
-    }
-    */
 
     for pipeline in &[&output_pipeline2] {
         let bus = pipeline.get_bus().unwrap();
@@ -615,16 +357,18 @@ fn main() {
         bus.add_signal_watch();
     }
 
-    let (timeline, thumbnails) = generate_timeline_and_thumbnails(&config, &thumbnails, &duration);
+    let duration = source.duration;
+    let (timeline, thumbnails) = generate_timeline_and_thumbnails(&config, source);
 
     write_result(&timeline, &output_pipeline, &output_src);
     write_result(&thumbnails, &output_pipeline2, &output_src2);
 
     main_loop.run();
 
+    println!("");
     println!("-> '{}'", config.timeline_filename);
     println!("-> '{}'", config.thumbnails_filename);
-    write_vtt(&config, &duration);
+    write_vtt(&config, duration);
     println!("-> '{}'", config.vtt_filename);
 
     output_pipeline
