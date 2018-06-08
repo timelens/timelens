@@ -18,6 +18,7 @@ use std::fs::File;
 use std::path::Path;
 use std::path::PathBuf;
 
+// Config objects are used to describe a single Timeline run
 #[derive(Debug)]
 struct Config {
     width: usize,
@@ -30,10 +31,10 @@ struct Config {
     thumbnails_filename: String,
     vtt_filename: String,
     tmp_width: usize,
-    preview: bool,
     seek_mode: bool,
 }
 
+// generate a Config from the command line arguments
 fn parse_config() -> Config {
     let matches = app_from_crate!()
         .arg(Arg::with_name("input").help("Input file").index(1))
@@ -69,23 +70,20 @@ fn parse_config() -> Config {
                 .long("vtt")
                 .takes_value(true),
         )
-        .arg(
-            Arg::with_name("preview")
-                .help("Open a preview window")
-                .short("p")
-                .long("preview"),
-        )
         .arg(Arg::with_name("seek").help("Allow seeking").long("seek"))
         .get_matches();
 
+    // default width is 1000
     let width_string = matches.value_of("width").unwrap_or("1000");
     let width: usize = width_string.parse().expect("Invalid width");
 
+    // default height is 100
     let height_string = matches.value_of("height").unwrap_or("100");
     let height: usize = height_string.parse().expect("Invalid height");
 
     let input_filename = matches.value_of("input").expect("No input file specified");
 
+    // default output filenames are extensions of the input filename
     let fallback_output = format!("{}.timeline.jpg", &input_filename);
     let timeline_filename = matches.value_of("timeline").unwrap_or(&fallback_output);
     let fallback_output2 = format!("{}.thumbnails.jpg", &input_filename);
@@ -104,14 +102,21 @@ fn parse_config() -> Config {
         thumbnails_filename: String::from(thumbnails_filename),
         vtt_filename: String::from(vtt_filename),
         tmp_width: 0,
-        preview: matches.is_present("preview"),
         seek_mode: matches.is_present("seek"),
     }
 }
 
-fn get_resolution(config: &Config) -> (i32, i32) {
-    let pipeline = gst::Pipeline::new(None);
+// convert milliseconds to a WebVTT timestamp (which has the format "(HH:)MM:SS.mmmm")
+fn timestamp(mseconds_total: i32) -> String {
+    let minutes = mseconds_total / (1000 * 60);
+    let seconds = (mseconds_total - 1000 * 60 * minutes) / 1000;
+    let mseconds = mseconds_total - 1000 * (seconds + 60 * minutes);
+    format!("{:02}:{:02}.{:03}", minutes, seconds, mseconds)
+}
 
+// get the resolution of the input file
+fn get_resolution(config: &Config) -> (i32, i32) {
+    // generate file:// URI from an absolute filename
     let uri = format!(
         "file://{}",
         fs::canonicalize(&PathBuf::from(config.input_filename.as_str()))
@@ -120,19 +125,34 @@ fn get_resolution(config: &Config) -> (i32, i32) {
             .unwrap()
     );
 
+    // set up a playbin element, which automatically select decoders
+    let playbin = gst::ElementFactory::make("playbin", None).unwrap();
+    playbin.set_property("uri", &uri).unwrap();
+
+    // we don't actually want any output, so we connect the playbin to a fakesink
     let fakesink = gst::ElementFactory::make("fakesink", None).unwrap();
+    playbin.set_property("video-sink", &fakesink).unwrap();
 
-    let src = gst::ElementFactory::make("playbin", None).unwrap();
-    src.set_property("uri", &uri).unwrap();
-    src.set_property("video-sink", &fakesink).unwrap();
+    // create a pipeline and add the playbin to it
+    let pipeline = gst::Pipeline::new(None);
+    pipeline.add(&playbin).unwrap();
 
-    pipeline.add(&src);
-
-    pipeline.set_state(gst::State::Paused);
+    // set pipeline state to "paused" to start pad negotiation
+    pipeline
+        .set_state(gst::State::Paused)
+        .into_result()
+        .unwrap();
     pipeline.get_state(10 * gst::SECOND);
 
-    let pad = src.emit("get-video-pad", &[&0]).unwrap().unwrap();
-    let pad = pad.get::<gst::Pad>().unwrap();
+    // get the sinkpad of the first video stream
+    let pad = playbin
+        .emit("get-video-pad", &[&0])
+        .unwrap()
+        .unwrap()
+        .get::<gst::Pad>()
+        .unwrap();
+
+    // and retrieve width and height from its caps
     let caps = pad.get_current_caps().unwrap();
     let width = caps.get_structure(0)
         .unwrap()
@@ -147,11 +167,13 @@ fn get_resolution(config: &Config) -> (i32, i32) {
         .get::<i32>()
         .unwrap();
 
-    pipeline.set_state(gst::State::Null);
+    pipeline.set_state(gst::State::Null).into_result().unwrap();
 
     (width, height)
 }
 
+// build a pipeline that decodes the video to BGRx at 1 FPS, scales the frames to thumbnail size,
+// and hands it to an Appsink
 fn build_input_pipeline(config: &Config) -> (gst::Pipeline, gst::Element, gst_app::AppSink) {
     let uri = format!(
         "file://{}",
@@ -167,6 +189,7 @@ fn build_input_pipeline(config: &Config) -> (gst::Pipeline, gst::Element, gst_ap
     let videoconvert = gst::ElementFactory::make("videoconvert", None).unwrap();
     let videorate = gst::ElementFactory::make("videorate", None).unwrap();
     let videoscale = gst::ElementFactory::make("videoscale", None).unwrap();
+    // scale frames exactly to the desired size, don't add borders
     videoscale.set_property("add-borders", &false).unwrap();
 
     let capsfilter = gst::ElementFactory::make("capsfilter", None).unwrap();
@@ -205,8 +228,12 @@ fn build_input_pipeline(config: &Config) -> (gst::Pipeline, gst::Element, gst_ap
     let appsink = sink.clone()
         .dynamic_cast::<gst_app::AppSink>()
         .expect("Sink element is expected to be an appsink!");
+    // go as fast as possible :)
     appsink.set_property("sync", &false).unwrap();
 
+    // when a new source pad opens on the decodebin, connect it to the videoconvert element.
+    // this code is required because media files might contain no (or many) video strems, this is
+    // not known before the pipeline is started.
     let convert_clone = videoconvert.clone();
     src.connect_pad_added(move |_, src_pad| {
         let convert = &convert_clone;
@@ -214,12 +241,11 @@ fn build_input_pipeline(config: &Config) -> (gst::Pipeline, gst::Element, gst_ap
         let sink_pad = convert
             .get_static_pad("sink")
             .expect("Failed to get static sink pad from convert");
+
         if sink_pad.is_linked() {
-            // We are already linked. Ignoring.
+            // we are already linked. ignoring.
             return;
         }
-
-        //gst::debug_bin_to_dot_file(&pipeline_clone, gst::DebugGraphDetails::ALL, "output");
 
         let new_pad_caps = src_pad
             .get_current_caps()
@@ -247,9 +273,12 @@ fn build_input_pipeline(config: &Config) -> (gst::Pipeline, gst::Element, gst_ap
     (pipeline, capsfilter, appsink)
 }
 
-fn build_output_pipeline(config: &Config) -> (gst::Pipeline, gst_app::AppSrc) {
-    let output_pipeline = gst::Pipeline::new(None);
-
+// build a pipeline that writes the first frame pushed into the Appsrc to a JPEG file
+fn build_output_pipeline(
+    width: i32,
+    height: i32,
+    filename: &String,
+) -> (gst::Pipeline, gst_app::AppSrc) {
     let src = gst::ElementFactory::make("appsrc", None).unwrap();
 
     let capsfilter = gst::ElementFactory::make("capsfilter", None).unwrap();
@@ -261,8 +290,8 @@ fn build_output_pipeline(config: &Config) -> (gst::Pipeline, gst_app::AppSrc) {
                 &[
                     ("format", &"BGRx"),
                     ("framerate", &gst::Fraction::new(1, 1)),
-                    ("width", &(config.width as i32)),
-                    ("height", &(config.height as i32)),
+                    ("width", &width),
+                    ("height", &height),
                 ],
             ),
         )
@@ -270,9 +299,9 @@ fn build_output_pipeline(config: &Config) -> (gst::Pipeline, gst_app::AppSrc) {
 
     let jpegenc = gst::ElementFactory::make("jpegenc", None).unwrap();
     let filesink = gst::ElementFactory::make("filesink", None).unwrap();
-    filesink
-        .set_property("location", &config.timeline_filename)
-        .unwrap();
+    filesink.set_property("location", &filename).unwrap();
+
+    let output_pipeline = gst::Pipeline::new(None);
     output_pipeline
         .add_many(&[&src, &capsfilter, &jpegenc, &filesink])
         .unwrap();
@@ -287,152 +316,11 @@ fn build_output_pipeline(config: &Config) -> (gst::Pipeline, gst_app::AppSrc) {
     (output_pipeline, appsrc)
 }
 
-fn build_output_pipeline2(config: &Config) -> (gst::Pipeline, gst_app::AppSrc) {
-    let output_pipeline = gst::Pipeline::new(None);
-
-    let src = gst::ElementFactory::make("appsrc", None).unwrap();
-
-    let capsfilter = gst::ElementFactory::make("capsfilter", None).unwrap();
-    capsfilter
-        .set_property(
-            "caps",
-            &gst::Caps::new_simple(
-                "video/x-raw",
-                &[
-                    ("format", &"BGRx"),
-                    ("framerate", &gst::Fraction::new(1, 1)),
-                    (
-                        "width",
-                        &((config.thumb_width * config.thumb_columns) as i32),
-                    ),
-                    (
-                        "height",
-                        &((config.thumb_height * (config.width / config.thumb_columns + 1)) as i32),
-                    ),
-                ],
-            ),
-        )
-        .unwrap();
-
-    let jpegenc = gst::ElementFactory::make("jpegenc", None).unwrap();
-    let filesink = gst::ElementFactory::make("filesink", None).unwrap();
-    filesink
-        .set_property("location", &config.thumbnails_filename)
-        .unwrap();
-    output_pipeline
-        .add_many(&[&src, &capsfilter, &jpegenc, &filesink])
-        .unwrap();
-    gst::Element::link_many(&[&src, &capsfilter, &jpegenc, &filesink]).unwrap();
-
-    let appsrc = src.clone()
-        .dynamic_cast::<gst_app::AppSrc>()
-        .expect("Sink element is expected to be an appsrc!");
-    appsrc.set_property_format(gst::Format::Time);
-    appsrc.set_property_block(true);
-
-    (output_pipeline, appsrc)
-}
-
-fn build_preview_pipeline(config: &Config) -> (gst::Pipeline, gst_app::AppSrc) {
-    let preview_pipeline = gst::Pipeline::new(None);
-
-    let src = gst::ElementFactory::make("appsrc", None).unwrap();
-
-    let capsfilter = gst::ElementFactory::make("capsfilter", None).unwrap();
-    capsfilter
-        .set_property(
-            "caps",
-            &gst::Caps::new_simple(
-                "video/x-raw",
-                &[
-                    ("format", &"BGRx"),
-                    ("framerate", &gst::Fraction::new(1, 1)),
-                    ("width", &(config.width as i32)),
-                    ("height", &(config.height as i32)),
-                ],
-            ),
-        )
-        .unwrap();
-    let videoconvert = gst::ElementFactory::make("videoconvert", None).unwrap();
-
-    let sink = gst::ElementFactory::make("autovideosink", None).unwrap();
-    sink.set_property("sync", &false).unwrap();
-
-    preview_pipeline
-        .add_many(&[&src, &capsfilter, &videoconvert, &sink])
-        .unwrap();
-    gst::Element::link_many(&[&src, &capsfilter, &videoconvert, &sink]).unwrap();
-
-    let appsrc = src.clone()
-        .dynamic_cast::<gst_app::AppSrc>()
-        .expect("Sink element is expected to be an appsrc!");
-    appsrc.set_property_format(gst::Format::Time);
-    appsrc.set_property_block(true);
-
-    preview_pipeline
-        .set_state(gst::State::Playing)
-        .into_result()
-        .unwrap();
-
-    (preview_pipeline, appsrc)
-}
-
-fn build_preview_pipeline2(config: &Config) -> (gst::Pipeline, gst_app::AppSrc) {
-    let preview_pipeline = gst::Pipeline::new(None);
-
-    let src = gst::ElementFactory::make("appsrc", None).unwrap();
-
-    let capsfilter = gst::ElementFactory::make("capsfilter", None).unwrap();
-    capsfilter
-        .set_property(
-            "caps",
-            &gst::Caps::new_simple(
-                "video/x-raw",
-                &[
-                    ("format", &"BGRx"),
-                    ("framerate", &gst::Fraction::new(1, 1)),
-                    (
-                        "width",
-                        &((config.thumb_width * config.thumb_columns) as i32),
-                    ),
-                    (
-                        "height",
-                        &((config.thumb_height * (config.width / config.thumb_columns + 1)) as i32),
-                    ),
-                ],
-            ),
-        )
-        .unwrap();
-    let videoconvert = gst::ElementFactory::make("videoconvert", None).unwrap();
-
-    let sink = gst::ElementFactory::make("autovideosink", None).unwrap();
-    sink.set_property("sync", &false).unwrap();
-
-    preview_pipeline
-        .add_many(&[&src, &capsfilter, &videoconvert, &sink])
-        .unwrap();
-    gst::Element::link_many(&[&src, &capsfilter, &videoconvert, &sink]).unwrap();
-
-    let appsrc = src.clone()
-        .dynamic_cast::<gst_app::AppSrc>()
-        .expect("Sink element is expected to be an appsrc!");
-    appsrc.set_property_format(gst::Format::Time);
-    appsrc.set_property_block(true);
-
-    preview_pipeline
-        .set_state(gst::State::Playing)
-        .into_result()
-        .unwrap();
-
-    (preview_pipeline, appsrc)
-}
-
+// the hard part: actually create timeline and thumbnails file
 fn generate_timeline_and_thumbnails(
     config: &Config,
     input_pipeline: &gst::Pipeline,
     appsink: &gst_app::AppSink,
-    preview_src: &gst_app::AppSrc,
-    preview_src2: &gst_app::AppSrc,
     duration: &gst::ClockTime,
 ) -> (gst::Buffer, gst::Buffer) {
     let mut timeline = gst::Buffer::with_size(config.width * config.height * 4).unwrap();
@@ -525,17 +413,6 @@ fn generate_timeline_and_thumbnails(
             }
         }
 
-        if config.preview {
-            preview_src
-                .push_buffer(timeline.copy_deep().unwrap())
-                .into_result()
-                .unwrap();
-            preview_src2
-                .push_buffer(thumbnails.copy_deep().unwrap())
-                .into_result()
-                .unwrap();
-        }
-
         done[i as usize] += 1;
 
         if !done.contains(&0) {
@@ -558,6 +435,7 @@ fn generate_timeline_and_thumbnails(
     }
 }
 
+// push a buffer into an output pipeline and wait for EOS
 fn write_result(
     timeline: &gst::Buffer,
     output_pipeline: &gst::Pipeline,
@@ -574,11 +452,12 @@ fn write_result(
     output_src.end_of_stream().into_result().unwrap();
 }
 
+// write a WebVTT file pointing to the thumbnail locations
 fn write_vtt(config: &Config, duration: &gst::ClockTime) {
     let mseconds = duration.mseconds().unwrap() as i32;
 
     let mut f = File::create(&config.vtt_filename).unwrap();
-    f.write_all(b"WEBVTT\n\n");
+    f.write_all(b"WEBVTT\n\n").unwrap();
 
     for i in 0..config.width {
         let from = mseconds / &(config.width as i32) * (i as i32);
@@ -614,29 +493,39 @@ fn write_vtt(config: &Config, duration: &gst::ClockTime) {
 }
 
 fn main() {
+    // parse the command line arguments
     let mut config = parse_config();
 
-    // Initialize GStreamer
+    // initialize GStreamer
     gst::init().unwrap();
 
+    // calculate desired thumbnail width
     let (width, height) = get_resolution(&config);
     let aspect_ratio = (1000 * width / height) as usize;
     config.thumb_width = config.thumb_height * aspect_ratio / 1000;
     config.tmp_width = config.thumb_height * aspect_ratio / 1000;
 
+    // build input and output pipelines
     let (input_pipeline, capsfilter, appsink) = build_input_pipeline(&config);
-    let (output_pipeline, output_src) = build_output_pipeline(&config);
-    let (output_pipeline2, output_src2) = build_output_pipeline2(&config);
-    let (preview_pipeline, preview_src) = build_preview_pipeline(&config);
-    let (preview_pipeline2, preview_src2) = build_preview_pipeline2(&config);
+    let (output_pipeline, output_src) = build_output_pipeline(
+        config.width as i32,
+        config.height as i32,
+        &config.timeline_filename,
+    );
+    let (output_pipeline2, output_src2) = build_output_pipeline(
+        ((config.thumb_width * config.thumb_columns) as i32),
+        ((config.thumb_height * (config.width / config.thumb_columns + 1)) as i32),
+        &config.thumbnails_filename,
+    );
 
+    // set the input pipeline to paused to fill the buffers
     input_pipeline
-        .set_state(gst::State::Playing)
+        .set_state(gst::State::Paused)
         .into_result()
         .unwrap();
-
     input_pipeline.get_state(10 * gst::SECOND);
 
+    // if we don't seek, start playing
     if !config.seek_mode {
         input_pipeline
             .set_state(gst::State::Playing)
@@ -664,12 +553,7 @@ fn main() {
 
     let main_loop = glib::MainLoop::new(None, false);
 
-    for pipeline in &[
-        &input_pipeline,
-        &output_pipeline,
-        &preview_pipeline,
-        &preview_pipeline2,
-    ] {
+    for pipeline in &[&input_pipeline, &output_pipeline] {
         let bus = pipeline.get_bus().unwrap();
         bus.connect_message(move |_, msg| match msg.view() {
             gst::MessageView::Eos(_) => {}
@@ -706,14 +590,8 @@ fn main() {
         bus.add_signal_watch();
     }
 
-    let (timeline, thumbnails) = generate_timeline_and_thumbnails(
-        &config,
-        &input_pipeline,
-        &appsink,
-        &preview_src,
-        &preview_src2,
-        &duration,
-    );
+    let (timeline, thumbnails) =
+        generate_timeline_and_thumbnails(&config, &input_pipeline, &appsink, &duration);
 
     write_result(&timeline, &output_pipeline, &output_src);
     write_result(&thumbnails, &output_pipeline2, &output_src2);
@@ -729,14 +607,6 @@ fn main() {
         .set_state(gst::State::Null)
         .into_result()
         .unwrap();
-    preview_pipeline
-        .set_state(gst::State::Null)
-        .into_result()
-        .unwrap();
-    preview_pipeline2
-        .set_state(gst::State::Null)
-        .into_result()
-        .unwrap();
     output_pipeline
         .set_state(gst::State::Null)
         .into_result()
@@ -745,11 +615,4 @@ fn main() {
         .set_state(gst::State::Null)
         .into_result()
         .unwrap();
-}
-
-fn timestamp(mseconds_total: i32) -> String {
-    let minutes = mseconds_total / (1000 * 60);
-    let seconds = (mseconds_total - 1000 * 60 * minutes) / 1000;
-    let mseconds = mseconds_total - seconds * 1000 - minutes * 1000 * 60;
-    format!("{:02}:{:02}.{:03}", minutes, seconds, mseconds)
 }
