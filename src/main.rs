@@ -19,7 +19,6 @@ use std::path::Path;
 mod source;
 
 // Config objects are used to describe a single Timeline run
-#[derive(Debug, Clone)]
 pub struct Config {
     width: usize,
     height: usize,

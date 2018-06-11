@@ -5,10 +5,18 @@ use gst::prelude::*;
 use std::fs;
 use std::path::PathBuf;
 
+/// A reference to exactly one of a file's video streams.
+///
+/// This type provides an `Iterator` interface which returns frames from the video in an
+/// unspecified order.
 pub struct VideoSource {
+    /// Height of the output frames
     pub height: usize,
+    /// Width of the output frames
     pub width: usize,
+    /// Duration of the video in seconds
     pub duration: f32,
+
     pipeline: gst::Pipeline,
     appsink: gst_app::AppSink,
 }
@@ -16,12 +24,18 @@ pub struct VideoSource {
 type Frame = gst::Sample;
 
 impl VideoSource {
+    /// Initializes a new `VideoSource`, referencing the specified video `filename`.
+    ///
+    /// Any frames this source outputs will be `output_height` pixels high. The source will try to
+    /// output approximately `n` frames.
     pub fn new(filename: &String, output_height: usize, n: usize) -> VideoSource {
+        // get size and duration information
         let (width, height, duration) = get_meta(&filename);
 
-        let aspect_ratio = 1000 * width / height;
-        let output_width = output_height * aspect_ratio / 1000;
+        // calculate which output width keeps the aspect ratio
+        let output_width = (output_height as f32 * width as f32 / height as f32) as usize;
 
+        // set up GStreamer pipeline
         let (pipeline, capsfilter, appsink) =
             build_pipeline(&filename, output_width, output_height);
 
@@ -42,8 +56,10 @@ impl VideoSource {
                 .unwrap();
         }
 
-        let fps = gst::Fraction::new(n as i32, duration as i32); // FIXME
+        // approximate which FPS value is required to output n frames in total
+        let fps = gst::Fraction::new(n as i32, duration as i32);
 
+        // set the capsfilter element correctly so that the pipeline will output the correct format
         capsfilter
             .set_property(
                 "caps",
@@ -59,6 +75,7 @@ impl VideoSource {
             )
             .unwrap();
 
+        // return the new VideoSource
         VideoSource {
             width: output_width,
             height: output_height,
@@ -76,7 +93,7 @@ impl Iterator for VideoSource {
         match self.appsink.pull_sample() {
             Some(sample) => Some(sample),
             None => {
-                // we are probably at the end
+                // we are at the end of the video. Stop pipeline and return None.
                 self.pipeline
                     .set_state(gst::State::Null)
                     .into_result()
@@ -87,13 +104,7 @@ impl Iterator for VideoSource {
         }
 
         /*
-        let progress = 100 * next_column / config.width;
-        print!("\rtimelens: {}% ", progress);
-        stdout().flush().unwrap();
-
-        next_column += 1;
-
-        if config.seek_mode {
+        if self.seek_mode {
             let j = (duration.nseconds().unwrap() as usize) / config.width * next_column;
 
             pipeline
@@ -159,9 +170,12 @@ fn get_meta(filename: &String) -> (usize, usize, f32) {
         .unwrap()
         .get::<i32>()
         .unwrap() as usize;
+
+    // also, query the pipeline for the duration and convert to seconds
     let duration_clocktime: gst::ClockTime = pipeline.query_duration().unwrap();
     let duration = duration_clocktime.nseconds().unwrap() as f32 / 1_000_000_000.0;
 
+    // stop the pipeline again
     pipeline.set_state(gst::State::Null).into_result().unwrap();
 
     (width, height, duration)
