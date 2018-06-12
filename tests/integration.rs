@@ -10,6 +10,69 @@ mod integration {
     use std::env;
     use std::path::Path;
 
+    #[test]
+    fn basics() {
+        fail("");
+        ok("--help");
+        ok("--version");
+        ok("-V");
+    }
+
+    #[test]
+    fn input_file() {
+        fail("");
+        fail("''");
+        fail("' '");
+        fail("does_not_exist.123");
+        fail(".");
+        fail("..");
+        fail("/");
+        fail("\\");
+
+        // ok_with_file("-w 1");
+        ok_with_file("-w 16");
+    }
+
+    #[test]
+    fn size() {
+        assert_test_file_exists();
+
+        fail_with_file("-w");
+        fail_with_file("-h");
+
+        fail_with_file("-w foo");
+        fail_with_file("-h foo");
+
+        fail_with_file("-w -100");
+        fail_with_file("-h -100");
+
+        fail_with_file("-w 100.0");
+        fail_with_file("-h 100.0");
+
+        fail_with_file("-w 0");
+        fail_with_file("-h 0");
+
+        fail_with_file("-w ''");
+        fail_with_file("-h ''");
+
+        ok_with_file("-w 16");
+        ok_with_file("-h 16");
+        ok_with_file("-w 16 -h 16");
+    }
+
+    #[test]
+    fn output() {
+        assert_test_file_exists();
+        let filename = test_file_name();
+
+        fail_with_file("-w 16 --timeline");
+        fail_with_file("-w 16 --timeline .");
+        fail_with_file("-w 16 --timeline ..");
+        fail_with_file("-w 16 --timeline /");
+
+        fail_with_file(&format!("-w 16 --timeline {}", filename));
+    }
+
     fn test_file_name() -> String {
         let mut filename = env::temp_dir();
         filename.push("timelens_test.mkv");
@@ -82,55 +145,5 @@ mod integration {
             .with_args(&args)
             .fails()
             .unwrap();
-    }
-
-    #[test]
-    fn basics() {
-        fail("");
-        ok("--help");
-        ok("--version");
-        ok("-V");
-    }
-
-    #[test]
-    fn input_file() {
-        fail("");
-        fail("''");
-        fail("' '");
-        fail("does_not_exist.123");
-        fail(".");
-        fail("..");
-        fail("/");
-        fail("\\");
-
-        // ok_with_file("-w 1");
-        ok_with_file("-w 16");
-    }
-
-    #[test]
-    fn size() {
-        assert_test_file_exists();
-
-        fail_with_file("-w");
-        fail_with_file("-h");
-
-        fail_with_file("-w foo");
-        fail_with_file("-h foo");
-
-        fail_with_file("-w -100");
-        fail_with_file("-h -100");
-
-        fail_with_file("-w 100.0");
-        fail_with_file("-h 100.0");
-
-        fail_with_file("-w 0");
-        fail_with_file("-h 0");
-
-        fail_with_file("-w ''");
-        fail_with_file("-h ''");
-
-        ok_with_file("-w 16");
-        ok_with_file("-h 16");
-        ok_with_file("-w 16 -h 16");
     }
 }

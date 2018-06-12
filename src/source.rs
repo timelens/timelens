@@ -86,7 +86,7 @@ impl VideoSource {
             height: output_height,
             duration,
             pipeline: pipeline,
-            seek_mode: true,
+            seek_mode: false,
             appsink,
             n,
             next_column: 0,

@@ -3,10 +3,12 @@ extern crate clap;
 
 use clap::Arg;
 use std::cmp;
+use std::fs;
 use std::fs::File;
 use std::io::stdout;
 use std::io::Write;
 use std::path::Path;
+use std::path::PathBuf;
 
 mod frame;
 mod source;
@@ -67,7 +69,12 @@ pub struct Config {
 // generate a Config from the command line arguments
 fn parse_config() -> Config {
     let matches = app_from_crate!()
-        .arg(Arg::with_name("input").help("Input file").index(1))
+        .arg(
+            Arg::with_name("input file")
+                .help("Input file")
+                .index(1)
+                .required(true),
+        )
         .arg(
             Arg::with_name("width")
                 .help("Width of output")
@@ -110,17 +117,20 @@ fn parse_config() -> Config {
     let height_string = matches.value_of("height").unwrap_or("100");
     let height: usize = height_string.parse().expect("Invalid height");
 
-    let input_filename = matches.value_of("input").expect("No input file specified");
+    let input_filename = matches.value_of("input file").unwrap();
 
     // default output filenames are extensions of the input filename
     let fallback_output = format!("{}.timeline.jpg", &input_filename);
     let timeline_filename = matches.value_of("timeline").unwrap_or(&fallback_output);
+    //check_for_collision(&input_filename, &timeline_filename);
 
     let fallback_output2 = format!("{}.thumbnails.jpg", &input_filename);
     let thumbnails_filename = matches.value_of("thumbnails").unwrap_or(&fallback_output2);
+    //check_for_collision(&input_filename, &thumbnails_filename);
 
     let fallback_output3 = format!("{}.thumbnails.vtt", &input_filename);
     let vtt_filename = matches.value_of("vtt").unwrap_or(&fallback_output3);
+    //check_for_collision(&input_filename, &vtt_filename);
 
     Config {
         width,
@@ -237,5 +247,13 @@ fn write_vtt(config: &Config, duration: f32) {
             w,
             h
         ).unwrap();
+    }
+}
+
+fn check_for_collision(existing: &str, new: &str) {
+    if fs::canonicalize(&PathBuf::from(existing)).unwrap()
+        == fs::canonicalize(&PathBuf::from(new)).unwrap()
+    {
+        panic!("Refusing to overwrite '{}'", existing);
     }
 }
