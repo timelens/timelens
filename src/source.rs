@@ -6,16 +6,16 @@ use source::gst::prelude::*;
 use std::fs;
 use std::path::PathBuf;
 
-/// A reference to exactly one of a file's video streams.
-///
-/// This type provides an `Iterator` interface which returns frames from the video in an
-/// unspecified order.
+// A reference to exactly one of a file's video streams.
+//
+// This type provides an `Iterator` interface which returns frames from the video in an
+// unspecified order.
 pub struct VideoSource {
-    /// Height of the output frames
+    // Height of the output frames
     pub height: usize,
-    /// Width of the output frames
+    // Width of the output frames
     pub width: usize,
-    /// Duration of the video in seconds
+    // Duration of the video in seconds
     pub duration: f32,
 
     pipeline: gst::Pipeline,
@@ -26,10 +26,10 @@ pub struct VideoSource {
 }
 
 impl VideoSource {
-    /// Initializes a new `VideoSource`, referencing the specified video `filename`.
-    ///
-    /// Any frames this source outputs will be `output_height` pixels high. The source will try to
-    /// output approximately `n` frames.
+    // Initializes a new `VideoSource`, referencing the specified video `filename`.
+    //
+    // Any frames this source outputs will be `output_height` pixels high. The source will try to
+    // output approximately `n` frames.
     pub fn new(filename: &String, output_height: usize, n: usize) -> VideoSource {
         // initialize GStreamer
         gst::init().unwrap();

@@ -19,31 +19,48 @@ fn main() {
     let source =
         source::VideoSource::new(&config.input_filename, config.thumb_height, config.width);
 
-    // derive thumbnail_width from the output width of the VideoSource
+    // derive thumbnail width from the output width of the VideoSource
     config.thumb_width = source.width;
 
+    // remember the video duration
     let duration = source.duration;
+
+    // the hard part: generate the timeline and the thumbnail sheet
     let (timeline, thumbnails) = generate_timeline_and_thumbnails(&config, source);
 
+    // write resulting images to JPEG files
     println!("");
     timeline.write_to(&config.timeline_filename);
     println!("-> '{}'", config.timeline_filename);
     thumbnails.write_to(&config.thumbnails_filename);
     println!("-> '{}'", config.thumbnails_filename);
+
+    // write the VTT file
     write_vtt(&config, duration);
     println!("-> '{}'", config.vtt_filename);
 }
 
 // Config objects are used to describe a single Timeline run
 pub struct Config {
+    // width of visual timeline
     width: usize,
+    // height of visual timeline
     height: usize,
+
+    // width of single thumbnail
     thumb_width: usize,
+    // height of single thumbnail
     thumb_height: usize,
+    // number of columns in the thumbnail sheet // TODO: remove
     thumb_columns: usize,
+
+    // name of the input file
     input_filename: String,
+    // name of the file the visual timeline will be written to
     timeline_filename: String,
+    // name of the file the thumbnail sheet will be written to
     thumbnails_filename: String,
+    // name of the file the VTT file will be written to
     vtt_filename: String,
 }
 
@@ -98,17 +115,21 @@ fn parse_config() -> Config {
     // default output filenames are extensions of the input filename
     let fallback_output = format!("{}.timeline.jpg", &input_filename);
     let timeline_filename = matches.value_of("timeline").unwrap_or(&fallback_output);
+
     let fallback_output2 = format!("{}.thumbnails.jpg", &input_filename);
     let thumbnails_filename = matches.value_of("thumbnails").unwrap_or(&fallback_output2);
+
     let fallback_output3 = format!("{}.thumbnails.vtt", &input_filename);
     let vtt_filename = matches.value_of("vtt").unwrap_or(&fallback_output3);
 
     Config {
         width,
         height,
+
         thumb_width: 0,
         thumb_height: height,
         thumb_columns: 20,
+
         input_filename: String::from(input_filename),
         timeline_filename: String::from(timeline_filename),
         thumbnails_filename: String::from(thumbnails_filename),
@@ -116,100 +137,51 @@ fn parse_config() -> Config {
     }
 }
 
-// convert milliseconds to a WebVTT timestamp (which has the format "(HH:)MM:SS.mmmm")
-fn timestamp(mseconds_total: i32) -> String {
-    let minutes = mseconds_total / (1000 * 60);
-    let seconds = (mseconds_total - 1000 * 60 * minutes) / 1000;
-    let mseconds = mseconds_total - 1000 * (seconds + 60 * minutes);
-    format!("{:02}:{:02}.{:03}", minutes, seconds, mseconds)
-}
-
 // the hard part: actually create timeline and thumbnails file
 fn generate_timeline_and_thumbnails(
     config: &Config,
     source: source::VideoSource,
 ) -> (frame::Frame, frame::Frame) {
+    // frame that will hold the visual timeline
     let mut timeline = frame::Frame::new(config.width, config.height);
 
+    // frame that will hold the thumbnail sheet
     let thumb_rows = config.width / config.thumb_columns + 1;
     let mut thumbnails = frame::Frame::new(
         config.thumb_width * config.thumb_columns,
         config.thumb_height * thumb_rows,
     );
 
+    // keep track of which columns are already done
     let mut done = vec![0; config.width];
+
+    // remember duration before moving `source`
     let duration = source.duration;
 
+    // iterate over the frames from the source (which arrive in any order)
     for frame in source {
-        let buffer = frame.buffer;
-        let map = buffer.map_readable().unwrap();
-        let indata = map.as_slice();
-
+        // calculate which column this frame belongs to
         let i = cmp::min(
             (config.width as f32 * (frame.pts.unwrap() / duration as f32)) as usize,
             config.width - 1,
         );
 
-        let progress = 100.0 * frame.pts.unwrap() / duration as f32;
-        print!("\rtimelens: {}% ", progress);
-        stdout().flush().unwrap();
+        // scale frame to 1 pixel width and copy into the timeline
+        let column = frame.scale(1, frame.height);
+        timeline.copy(&column, i, 0);
 
-        {
-            let timeline = timeline.buffer.get_mut().unwrap();
-            let mut data = timeline.map_writable().unwrap();
-
-            for y in 0..config.height {
-                let mut b: usize = 0;
-                let mut g: usize = 0;
-                let mut r: usize = 0;
-
-                for x in 0..config.thumb_width {
-                    b += indata[config.thumb_width * y * 4 + 4 * x] as usize;
-                    g += indata[config.thumb_width * y * 4 + 4 * x + 1] as usize;
-                    r += indata[config.thumb_width * y * 4 + 4 * x + 2] as usize;
-                }
-
-                b /= config.thumb_width;
-                g /= config.thumb_width;
-                r /= config.thumb_width;
-
-                data[config.width * y * 4 + i * 4] = b as u8;
-                data[config.width * y * 4 + i * 4 + 1] = g as u8;
-                data[config.width * y * 4 + i * 4 + 2] = r as u8;
-                data[config.width * y * 4 + i * 4 + 3] = 255;
-            }
-        }
-
-        {
-            let thumbnails = thumbnails.buffer.get_mut().unwrap();
-            let mut data = thumbnails.map_writable().unwrap();
-
-            let tx = i % config.thumb_columns;
-            let ty = i / config.thumb_columns;
-
-            for x in 0..config.thumb_width {
-                for y in 0..config.thumb_height {
-                    let r = indata[y * config.thumb_width * 4 + 4 * x] as usize;
-                    let g = indata[y * config.thumb_width * 4 + 4 * x + 1] as usize;
-                    let b = indata[y * config.thumb_width * 4 + 4 * x + 2] as usize;
-
-                    data[(config.thumb_columns * config.thumb_width * 4)
-                             * (ty * config.thumb_height + y)
-                             + (tx * config.thumb_width + x) * 4] = r as u8;
-                    data[(config.thumb_columns * config.thumb_width * 4)
-                             * (ty * config.thumb_height + y)
-                             + (tx * config.thumb_width + x) * 4 + 1] = g as u8;
-                    data[(config.thumb_columns * config.thumb_width * 4)
-                             * (ty * config.thumb_height + y)
-                             + (tx * config.thumb_width + x) * 4 + 2] = b as u8;
-                    data[(config.thumb_columns * config.thumb_width * 4)
-                             * (ty * config.thumb_height + y)
-                             + (tx * config.thumb_width + x) * 4 + 3] = 255 as u8;
-                }
-            }
-        }
+        // copy frame to the thumbnail sheet
+        let tx = i % config.thumb_columns;
+        let ty = i / config.thumb_columns;
+        thumbnails.copy(&frame, tx * config.thumb_width, ty * config.thumb_height);
 
         done[i as usize] += 1;
+
+        // calculate and report progress
+        let columns_done = done.iter().filter(|&n| *n > 0).count();
+        let progress = 100.0 * columns_done as f32 / config.width as f32;
+        print!("\rtimelens: {:.1}% ", progress);
+        stdout().flush().unwrap();
 
         if !done.contains(&0) {
             // we are done
@@ -218,6 +190,14 @@ fn generate_timeline_and_thumbnails(
     }
 
     (timeline, thumbnails)
+}
+
+// convert milliseconds to a WebVTT timestamp (which has the format "(HH:)MM:SS.mmmm")
+fn timestamp(mseconds_total: i32) -> String {
+    let minutes = mseconds_total / (1000 * 60);
+    let seconds = (mseconds_total - 1000 * 60 * minutes) / 1000;
+    let mseconds = mseconds_total - 1000 * (seconds + 60 * minutes);
+    format!("{:02}:{:02}.{:03}", minutes, seconds, mseconds)
 }
 
 // write a WebVTT file pointing to the thumbnail locations
