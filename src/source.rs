@@ -1,9 +1,11 @@
 extern crate gstreamer as gst;
 extern crate gstreamer_app as gst_app;
-use gst::prelude::*;
+use source::gst::prelude::*;
 
 use std::fs;
 use std::path::PathBuf;
+
+use frame;
 
 /// A reference to exactly one of a file's video streams.
 ///
@@ -21,14 +23,15 @@ pub struct VideoSource {
     appsink: gst_app::AppSink,
 }
 
-type Frame = gst::Sample;
-
 impl VideoSource {
     /// Initializes a new `VideoSource`, referencing the specified video `filename`.
     ///
     /// Any frames this source outputs will be `output_height` pixels high. The source will try to
     /// output approximately `n` frames.
     pub fn new(filename: &String, output_height: usize, n: usize) -> VideoSource {
+        // initialize GStreamer
+        gst::init().unwrap();
+
         // get size and duration information
         let (width, height, duration) = get_meta(&filename);
 
@@ -87,11 +90,19 @@ impl VideoSource {
 }
 
 impl Iterator for VideoSource {
-    type Item = Frame;
+    type Item = frame::Frame;
 
-    fn next(&mut self) -> Option<Frame> {
+    fn next(&mut self) -> Option<frame::Frame> {
         match self.appsink.pull_sample() {
-            Some(sample) => Some(sample),
+            Some(sample) => Some(frame::Frame {
+                buffer: sample.get_buffer().unwrap(),
+                width: self.width,
+                height: self.height,
+                pts: Some(
+                    sample.get_buffer().unwrap().get_pts().nseconds().unwrap() as f32
+                        / 1_000_000_000.0,
+                ),
+            }),
             None => {
                 // we are at the end of the video. Stop pipeline and return None.
                 self.pipeline

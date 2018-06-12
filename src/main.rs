@@ -2,12 +2,6 @@
 extern crate clap;
 use clap::Arg;
 
-extern crate glib;
-
-extern crate gstreamer as gst;
-extern crate gstreamer_app as gst_app;
-use gst::prelude::*;
-
 use std::cmp;
 
 use std::io::stdout;
@@ -16,7 +10,29 @@ use std::io::Write;
 use std::fs::File;
 use std::path::Path;
 
+mod frame;
 mod source;
+
+fn main() {
+    // parse the command line arguments
+    let mut config = parse_config();
+
+    let source =
+        source::VideoSource::new(&config.input_filename, config.thumb_height, config.width);
+    config.thumb_width = source.width;
+    config.tmp_width = source.width;
+
+    let duration = source.duration;
+    let (timeline, thumbnails) = generate_timeline_and_thumbnails(&config, source);
+
+    println!("");
+    timeline.write_to(&config.timeline_filename);
+    println!("-> '{}'", config.timeline_filename);
+    thumbnails.write_to(&config.thumbnails_filename);
+    println!("-> '{}'", config.thumbnails_filename);
+    write_vtt(&config, duration);
+    println!("-> '{}'", config.vtt_filename);
+}
 
 // Config objects are used to describe a single Timeline run
 pub struct Config {
@@ -113,82 +129,38 @@ fn timestamp(mseconds_total: i32) -> String {
     format!("{:02}:{:02}.{:03}", minutes, seconds, mseconds)
 }
 
-// build a pipeline that writes the first frame pushed into the Appsrc to a JPEG file
-fn build_output_pipeline(
-    width: i32,
-    height: i32,
-    filename: &String,
-) -> (gst::Pipeline, gst_app::AppSrc) {
-    let src = gst::ElementFactory::make("appsrc", None).unwrap();
-
-    let capsfilter = gst::ElementFactory::make("capsfilter", None).unwrap();
-    capsfilter
-        .set_property(
-            "caps",
-            &gst::Caps::new_simple(
-                "video/x-raw",
-                &[
-                    ("format", &"BGRx"),
-                    ("framerate", &gst::Fraction::new(1, 1)),
-                    ("width", &width),
-                    ("height", &height),
-                ],
-            ),
-        )
-        .unwrap();
-
-    let jpegenc = gst::ElementFactory::make("jpegenc", None).unwrap();
-    let filesink = gst::ElementFactory::make("filesink", None).unwrap();
-    filesink.set_property("location", &filename).unwrap();
-
-    let output_pipeline = gst::Pipeline::new(None);
-    output_pipeline
-        .add_many(&[&src, &capsfilter, &jpegenc, &filesink])
-        .unwrap();
-    gst::Element::link_many(&[&src, &capsfilter, &jpegenc, &filesink]).unwrap();
-
-    let appsrc = src.clone()
-        .dynamic_cast::<gst_app::AppSrc>()
-        .expect("Sink element is expected to be an appsrc!");
-    appsrc.set_property_format(gst::Format::Time);
-    appsrc.set_property_block(true);
-
-    (output_pipeline, appsrc)
-}
-
 // the hard part: actually create timeline and thumbnails file
 fn generate_timeline_and_thumbnails(
     config: &Config,
     source: source::VideoSource,
-) -> (gst::Buffer, gst::Buffer) {
-    let mut timeline = gst::Buffer::with_size(config.width * config.height * 4).unwrap();
+) -> (frame::Frame, frame::Frame) {
+    let mut timeline = frame::Frame::new(config.width, config.height);
 
     let thumb_rows = config.width / config.thumb_columns + 1;
-    let mut thumbnails = gst::Buffer::with_size(
-        config.thumb_width * config.thumb_columns * config.thumb_height * thumb_rows * 4,
-    ).unwrap();
+    let mut thumbnails = frame::Frame::new(
+        config.thumb_width * config.thumb_columns,
+        config.thumb_height * thumb_rows,
+    );
 
     let mut done = vec![0; config.width];
     let duration = source.duration;
 
-    for sample in source {
-        let buffer = sample.get_buffer().unwrap();
+    for frame in source {
+        let buffer = frame.buffer;
         let map = buffer.map_readable().unwrap();
         let indata = map.as_slice();
 
-        let pts: gst::ClockTime = buffer.get_pts();
         let i = cmp::min(
-            config.width * (pts.nseconds().unwrap() as usize)
-                / ((duration * 1_000_000_000.0) as usize),
+            (config.width as f32 * (frame.pts.unwrap() / duration as f32)) as usize,
             config.width - 1,
         );
 
-        let progress = 100 * pts.nseconds().unwrap() / (duration as u64 * 1_000_000_000);
+        let progress = 100.0 * frame.pts.unwrap() / duration as f32;
         print!("\rtimelens: {}% ", progress);
         stdout().flush().unwrap();
 
         {
-            let timeline = timeline.get_mut().unwrap();
+            let timeline = timeline.buffer.get_mut().unwrap();
             let mut data = timeline.map_writable().unwrap();
 
             for y in 0..config.height {
@@ -214,7 +186,7 @@ fn generate_timeline_and_thumbnails(
         }
 
         {
-            let thumbnails = thumbnails.get_mut().unwrap();
+            let thumbnails = thumbnails.buffer.get_mut().unwrap();
             let mut data = thumbnails.map_writable().unwrap();
 
             let tx = i % config.thumb_columns;
@@ -251,23 +223,6 @@ fn generate_timeline_and_thumbnails(
     }
 
     (timeline, thumbnails)
-}
-
-// push a buffer into an output pipeline and wait for EOS
-fn write_result(
-    timeline: &gst::Buffer,
-    output_pipeline: &gst::Pipeline,
-    output_src: &gst_app::AppSrc,
-) {
-    output_pipeline
-        .set_state(gst::State::Playing)
-        .into_result()
-        .unwrap();
-    output_src
-        .push_buffer(timeline.copy_deep().unwrap())
-        .into_result()
-        .unwrap();
-    output_src.end_of_stream().into_result().unwrap();
 }
 
 // write a WebVTT file pointing to the thumbnail locations
@@ -308,74 +263,4 @@ fn write_vtt(config: &Config, duration: f32) {
             h
         ).unwrap();
     }
-}
-
-fn main() {
-    // parse the command line arguments
-    let mut config = parse_config();
-
-    // initialize GStreamer
-    gst::init().unwrap();
-
-    let source =
-        source::VideoSource::new(&config.input_filename, config.thumb_height, config.width);
-    config.thumb_width = source.width;
-    config.tmp_width = source.width;
-
-    // build output pipelines
-    let (output_pipeline, output_src) = build_output_pipeline(
-        config.width as i32,
-        config.height as i32,
-        &config.timeline_filename,
-    );
-    let (output_pipeline2, output_src2) = build_output_pipeline(
-        (config.thumb_width * config.thumb_columns) as i32,
-        (config.thumb_height * (config.width / config.thumb_columns + 1)) as i32,
-        &config.thumbnails_filename,
-    );
-
-    let main_loop = glib::MainLoop::new(None, false);
-
-    for pipeline in &[&output_pipeline2] {
-        let bus = pipeline.get_bus().unwrap();
-        let main_loop_clone = main_loop.clone();
-        bus.connect_message(move |_, msg| match msg.view() {
-            gst::MessageView::Eos(_) => {
-                main_loop_clone.quit();
-            }
-            gst::MessageView::Error(err) => {
-                eprintln!(
-                    "Error received from element {:?}: {}",
-                    err.get_src().map(|s| s.get_path_string()),
-                    err.get_error()
-                );
-                eprintln!("Debugging information: {:?}", err.get_debug());
-            }
-            _ => {}
-        });
-        bus.add_signal_watch();
-    }
-
-    let duration = source.duration;
-    let (timeline, thumbnails) = generate_timeline_and_thumbnails(&config, source);
-
-    write_result(&timeline, &output_pipeline, &output_src);
-    write_result(&thumbnails, &output_pipeline2, &output_src2);
-
-    main_loop.run();
-
-    println!("");
-    println!("-> '{}'", config.timeline_filename);
-    println!("-> '{}'", config.thumbnails_filename);
-    write_vtt(&config, duration);
-    println!("-> '{}'", config.vtt_filename);
-
-    output_pipeline
-        .set_state(gst::State::Null)
-        .into_result()
-        .unwrap();
-    output_pipeline2
-        .set_state(gst::State::Null)
-        .into_result()
-        .unwrap();
 }
