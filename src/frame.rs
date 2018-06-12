@@ -84,7 +84,7 @@ impl Frame {
     }
 
     // write frame to `filename` as a JPEG using GStreamer
-    pub fn write_to(&self, filename: &String) {
+    pub fn write_to(&self, filename: &str) {
         let src = gst::ElementFactory::make("appsrc", None).unwrap();
 
         let capsfilter = gst::ElementFactory::make("capsfilter", None).unwrap();

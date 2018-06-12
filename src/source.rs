@@ -30,7 +30,7 @@ impl VideoSource {
     //
     // Any frames this source outputs will be `output_height` pixels high. The source will try to
     // output approximately `n` frames.
-    pub fn new(filename: &String, output_height: usize, n: usize) -> VideoSource {
+    pub fn new(filename: &str, output_height: usize, n: usize) -> VideoSource {
         // initialize GStreamer
         gst::init().unwrap();
 
@@ -85,7 +85,7 @@ impl VideoSource {
             width: output_width,
             height: output_height,
             duration,
-            pipeline: pipeline,
+            pipeline,
             seek_mode: false,
             appsink,
             n,
@@ -136,11 +136,11 @@ impl Iterator for VideoSource {
 }
 
 // get resolution and duration of the input file
-fn get_meta(filename: &String) -> (usize, usize, f32) {
+fn get_meta(filename: &str) -> (usize, usize, f32) {
     // generate file:// URI from an absolute filename
     let uri = format!(
         "file://{}",
-        fs::canonicalize(&PathBuf::from(filename.as_str()))
+        fs::canonicalize(&PathBuf::from(filename))
             .unwrap()
             .to_str()
             .unwrap()
@@ -201,13 +201,13 @@ fn get_meta(filename: &String) -> (usize, usize, f32) {
 // build a pipeline that decodes the video to BGRx at 1 FPS, scales the frames to thumbnail size,
 // and hands it to an Appsink
 fn build_pipeline(
-    filename: &String,
+    filename: &str,
     output_width: usize,
     output_height: usize,
 ) -> (gst::Pipeline, gst::Element, gst_app::AppSink) {
     let uri = format!(
         "file://{}",
-        fs::canonicalize(&PathBuf::from(filename.as_str()))
+        fs::canonicalize(&PathBuf::from(filename))
             .unwrap()
             .to_str()
             .unwrap()

@@ -31,15 +31,23 @@ fn main() {
     let (timeline, thumbnails) = generate_timeline_and_thumbnails(&config, source);
 
     // write resulting images to JPEG files
-    println!("");
-    timeline.write_to(&config.timeline_filename);
-    println!("-> '{}'", config.timeline_filename);
-    thumbnails.write_to(&config.thumbnails_filename);
-    println!("-> '{}'", config.thumbnails_filename);
+    println!();
 
-    // write the VTT file
-    write_vtt(&config, duration);
-    println!("-> '{}'", config.vtt_filename);
+    if let Some(ref timeline_filename) = config.timeline_filename {
+        timeline.write_to(&timeline_filename);
+        println!("-> '{}'", timeline_filename);
+    }
+
+    if let Some(ref thumbnails_filename) = config.thumbnails_filename {
+        thumbnails.write_to(&thumbnails_filename);
+        println!("-> '{}'", thumbnails_filename);
+    }
+
+    if let Some(ref vtt_filename) = config.vtt_filename {
+        // write the VTT file
+        write_vtt(&config, duration);
+        println!("-> '{}'", vtt_filename);
+    }
 }
 
 // Config objects are used to describe a single Timeline run
@@ -59,11 +67,11 @@ pub struct Config {
     // name of the input file
     input_filename: String,
     // name of the file the visual timeline will be written to
-    timeline_filename: String,
+    timeline_filename: Option<String>,
     // name of the file the thumbnail sheet will be written to
-    thumbnails_filename: String,
+    thumbnails_filename: Option<String>,
     // name of the file the VTT file will be written to
-    vtt_filename: String,
+    vtt_filename: Option<String>,
 }
 
 // generate a Config from the command line arguments
@@ -71,40 +79,46 @@ fn parse_config() -> Config {
     let matches = app_from_crate!()
         .arg(
             Arg::with_name("input file")
-                .help("Input file")
+                .help("Name of the video file")
                 .index(1)
                 .required(true),
         )
         .arg(
             Arg::with_name("width")
-                .help("Width of output")
+                .help("Set width of the visual timeline in pixels")
                 .short("w")
                 .long("width")
+                .display_order(0)
                 .takes_value(true),
         )
         .arg(
             Arg::with_name("height")
-                .help("Height of output")
+                .help("Set height of the visual timeline in pixels")
                 .short("h")
                 .long("height")
+                .display_order(0)
                 .takes_value(true),
         )
         .arg(
             Arg::with_name("timeline")
-                .help("Name of timeline output file")
+                .help("Name of timeline output file. If no output file is specified at all, write a timeline to 'INPUT_FILE.timeline.jpg' by default")
                 .long("timeline")
+                .value_name("filename")
                 .takes_value(true),
         )
         .arg(
             Arg::with_name("thumbnails")
                 .help("Name of thumbnails output file")
                 .long("thumbnails")
+                .value_name("filename")
                 .takes_value(true),
         )
         .arg(
             Arg::with_name("vtt")
                 .help("Name of VTT output file")
                 .long("vtt")
+                .value_name("filename")
+                .requires("thumbnails")
                 .takes_value(true),
         )
         .get_matches();
@@ -119,18 +133,30 @@ fn parse_config() -> Config {
 
     let input_filename = matches.value_of("input file").unwrap();
 
-    // default output filenames are extensions of the input filename
+    // set default timeline filename
     let fallback_output = format!("{}.timeline.jpg", &input_filename);
-    let timeline_filename = matches.value_of("timeline").unwrap_or(&fallback_output);
-    //check_for_collision(&input_filename, &timeline_filename);
+    let timeline_filename = if !matches.is_present("thumbnails") {
+        Some(String::from(
+            matches.value_of("timeline").unwrap_or(&fallback_output),
+        ))
+    } else {
+        match matches.value_of("timeline") {
+            Some(timeline) => Some(String::from(timeline)),
+            None => None,
+        }
+    };
 
-    let fallback_output2 = format!("{}.thumbnails.jpg", &input_filename);
-    let thumbnails_filename = matches.value_of("thumbnails").unwrap_or(&fallback_output2);
-    //check_for_collision(&input_filename, &thumbnails_filename);
+    let thumbnails_filename = if matches.is_present("thumbnails") {
+        Some(String::from(matches.value_of("thumbnails").unwrap()))
+    } else {
+        None
+    };
 
-    let fallback_output3 = format!("{}.thumbnails.vtt", &input_filename);
-    let vtt_filename = matches.value_of("vtt").unwrap_or(&fallback_output3);
-    //check_for_collision(&input_filename, &vtt_filename);
+    let vtt_filename = if matches.is_present("vtt") {
+        Some(String::from(matches.value_of("vtt").unwrap()))
+    } else {
+        None
+    };
 
     Config {
         width,
@@ -141,9 +167,9 @@ fn parse_config() -> Config {
         thumb_columns: 20,
 
         input_filename: String::from(input_filename),
-        timeline_filename: String::from(timeline_filename),
-        thumbnails_filename: String::from(thumbnails_filename),
-        vtt_filename: String::from(vtt_filename),
+        timeline_filename,
+        thumbnails_filename,
+        vtt_filename,
     }
 }
 
@@ -214,23 +240,26 @@ fn timestamp(mseconds_total: i32) -> String {
 fn write_vtt(config: &Config, duration: f32) {
     let mseconds = (duration * 1_000_000.0) as i32;
 
-    let mut f = File::create(&config.vtt_filename).unwrap();
+    let thumbnails_filename = config.thumbnails_filename.clone().unwrap();
+    let vtt_filename = config.vtt_filename.clone().unwrap();
+
+    let mut f = File::create(&vtt_filename).unwrap();
     f.write_all(b"WEBVTT\n\n").unwrap();
 
     for i in 0..config.width {
-        let from = mseconds / &(config.width as i32) * (i as i32);
-        let to = mseconds / &(config.width as i32) * ((i as i32) + 1);
+        let from = mseconds / (config.width as i32) * (i as i32);
+        let to = mseconds / (config.width as i32) * ((i as i32) + 1);
 
-        let tx = i % &config.thumb_columns;
-        let ty = i / &config.thumb_columns;
+        let tx = i % config.thumb_columns;
+        let ty = i / config.thumb_columns;
 
-        let x = tx * &config.thumb_width;
-        let y = ty * &config.thumb_height;
+        let x = tx * config.thumb_width;
+        let y = ty * config.thumb_height;
 
-        let w = &config.thumb_width;
-        let h = &config.thumb_height;
+        let w = config.thumb_width;
+        let h = config.thumb_height;
 
-        let filename = Path::new(&config.thumbnails_filename)
+        let filename = Path::new(&thumbnails_filename)
             .file_name()
             .unwrap()
             .to_str()
