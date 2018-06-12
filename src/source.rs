@@ -1,11 +1,10 @@
 extern crate gstreamer as gst;
 extern crate gstreamer_app as gst_app;
-use source::gst::prelude::*;
-
-use std::fs;
-use std::path::PathBuf;
 
 use frame;
+use source::gst::prelude::*;
+use std::fs;
+use std::path::PathBuf;
 
 /// A reference to exactly one of a file's video streams.
 ///
@@ -21,6 +20,9 @@ pub struct VideoSource {
 
     pipeline: gst::Pipeline,
     appsink: gst_app::AppSink,
+    seek_mode: bool,
+    n: usize,
+    next_column: usize,
 }
 
 impl VideoSource {
@@ -84,7 +86,10 @@ impl VideoSource {
             height: output_height,
             duration,
             pipeline: pipeline,
+            seek_mode: true,
             appsink,
+            n,
+            next_column: 0,
         }
     }
 }
@@ -93,16 +98,30 @@ impl Iterator for VideoSource {
     type Item = frame::Frame;
 
     fn next(&mut self) -> Option<frame::Frame> {
+        if self.seek_mode {
+            let j = (self.duration * 1_000_000_000.0) / self.n as f32 * self.next_column as f32;
+
+            self.pipeline
+                .seek_simple(
+                    gst::SeekFlags::FLUSH, // | gst::SeekFlags::KEY_UNIT,
+                    (j as u64) * gst::NSECOND,
+                )
+                .unwrap();
+        }
+
         match self.appsink.pull_sample() {
-            Some(sample) => Some(frame::Frame {
-                buffer: sample.get_buffer().unwrap(),
-                width: self.width,
-                height: self.height,
-                pts: Some(
-                    sample.get_buffer().unwrap().get_pts().nseconds().unwrap() as f32
-                        / 1_000_000_000.0,
-                ),
-            }),
+            Some(sample) => {
+                self.next_column += 1;
+                Some(frame::Frame {
+                    buffer: sample.get_buffer().unwrap(),
+                    width: self.width,
+                    height: self.height,
+                    pts: Some(
+                        sample.get_buffer().unwrap().get_pts().nseconds().unwrap() as f32
+                            / 1_000_000_000.0,
+                    ),
+                })
+            }
             None => {
                 // we are at the end of the video. Stop pipeline and return None.
                 self.pipeline
@@ -113,19 +132,6 @@ impl Iterator for VideoSource {
                 None
             }
         }
-
-        /*
-        if self.seek_mode {
-            let j = (duration.nseconds().unwrap() as usize) / config.width * next_column;
-
-            pipeline
-                .seek_simple(
-                    gst::SeekFlags::FLUSH, // | gst::SeekFlags::KEY_UNIT,
-                    (j as u64) * gst::NSECOND,
-                )
-                .unwrap();
-        }
-        */
     }
 }
 

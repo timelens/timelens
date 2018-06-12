@@ -1,13 +1,11 @@
 #[macro_use]
 extern crate clap;
+
 use clap::Arg;
-
 use std::cmp;
-
+use std::fs::File;
 use std::io::stdout;
 use std::io::Write;
-
-use std::fs::File;
 use std::path::Path;
 
 mod frame;
@@ -17,10 +15,12 @@ fn main() {
     // parse the command line arguments
     let mut config = parse_config();
 
+    // create and initialize VideoSource
     let source =
         source::VideoSource::new(&config.input_filename, config.thumb_height, config.width);
+
+    // derive thumbnail_width from the output width of the VideoSource
     config.thumb_width = source.width;
-    config.tmp_width = source.width;
 
     let duration = source.duration;
     let (timeline, thumbnails) = generate_timeline_and_thumbnails(&config, source);
@@ -45,8 +45,6 @@ pub struct Config {
     timeline_filename: String,
     thumbnails_filename: String,
     vtt_filename: String,
-    tmp_width: usize,
-    seek_mode: bool,
 }
 
 // generate a Config from the command line arguments
@@ -85,7 +83,6 @@ fn parse_config() -> Config {
                 .long("vtt")
                 .takes_value(true),
         )
-        .arg(Arg::with_name("seek").help("Allow seeking").long("seek"))
         .get_matches();
 
     // default width is 1000
@@ -116,8 +113,6 @@ fn parse_config() -> Config {
         timeline_filename: String::from(timeline_filename),
         thumbnails_filename: String::from(thumbnails_filename),
         vtt_filename: String::from(vtt_filename),
-        tmp_width: 0,
-        seek_mode: matches.is_present("seek"),
     }
 }
 
@@ -168,15 +163,15 @@ fn generate_timeline_and_thumbnails(
                 let mut g: usize = 0;
                 let mut r: usize = 0;
 
-                for x in 0..config.tmp_width {
-                    b += indata[config.tmp_width * y * 4 + 4 * x] as usize;
-                    g += indata[config.tmp_width * y * 4 + 4 * x + 1] as usize;
-                    r += indata[config.tmp_width * y * 4 + 4 * x + 2] as usize;
+                for x in 0..config.thumb_width {
+                    b += indata[config.thumb_width * y * 4 + 4 * x] as usize;
+                    g += indata[config.thumb_width * y * 4 + 4 * x + 1] as usize;
+                    r += indata[config.thumb_width * y * 4 + 4 * x + 2] as usize;
                 }
 
-                b /= config.tmp_width;
-                g /= config.tmp_width;
-                r /= config.tmp_width;
+                b /= config.thumb_width;
+                g /= config.thumb_width;
+                r /= config.thumb_width;
 
                 data[config.width * y * 4 + i * 4] = b as u8;
                 data[config.width * y * 4 + i * 4 + 1] = g as u8;

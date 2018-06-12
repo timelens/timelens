@@ -1,5 +1,6 @@
 extern crate gstreamer as gst;
 extern crate gstreamer_app as gst_app;
+
 use frame::gst::prelude::*;
 
 pub struct Frame {
