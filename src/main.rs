@@ -288,7 +288,9 @@ fn check_for_collision(existing: &str, new_opt: &Option<String>) {
     if let Some(new) = new_opt {
         let e = PathBuf::from(existing);
         let n = PathBuf::from(new);
-        if e.exists() && fs::canonicalize(&e).unwrap() == fs::canonicalize(&n).unwrap() {
+        if e.exists() && n.exists()
+            && fs::canonicalize(&e).unwrap() == fs::canonicalize(&n).unwrap()
+        {
             panic!("Refusing to overwrite '{}'", existing);
         }
     }
