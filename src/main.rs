@@ -14,67 +14,67 @@ mod frame;
 mod source;
 
 fn main() {
-    // parse the command line arguments
+    // Parse the command line arguments
     let mut config = parse_config();
 
-    // create and initialize VideoSource
-    let source =
+    // Create and initialize VideoSource
+    let mut source =
         source::VideoSource::new(&config.input_filename, config.thumb_height, config.width);
 
-    // derive thumbnail width from the output width of the VideoSource
+    // Derive thumbnail width and column count from the output width of the VideoSource
     config.thumb_width = source.width;
+    let max_image_width = 5000;
+    config.thumb_columns = max_image_width / config.thumb_width;
 
-    // remember the video duration
-    let duration = source.duration;
+    // The hard part: generate the timeline and the thumbnail sheet
+    let (timeline, thumbnails) = generate_timeline_and_thumbnails(&config, &mut source);
 
-    // the hard part: generate the timeline and the thumbnail sheet
-    let (timeline, thumbnails) = generate_timeline_and_thumbnails(&config, source);
-
-    // write resulting images to JPEG files
     println!();
 
     if let Some(ref timeline_filename) = config.timeline_filename {
+        // Write resulting timeline to a file
         timeline.write_to(&timeline_filename);
         println!("-> '{}'", timeline_filename);
     }
 
     if let Some(ref thumbnails_filename) = config.thumbnails_filename {
+        // Write resulting thumbnails to a file
         thumbnails.write_to(&thumbnails_filename);
         println!("-> '{}'", thumbnails_filename);
     }
 
     if let Some(ref vtt_filename) = config.vtt_filename {
-        // write the VTT file
-        write_vtt(&config, duration);
+        // Write the VTT file
+        write_vtt(&config, source.duration);
         println!("-> '{}'", vtt_filename);
     }
 }
 
 // Config objects are used to describe a single Timeline run
 pub struct Config {
-    // width of visual timeline
+    // Width of visual timeline
     width: usize,
-    // height of visual timeline
+    // Height of visual timeline
     height: usize,
 
-    // width of single thumbnail
+    // Width of single thumbnail
     thumb_width: usize,
-    // height of single thumbnail
+    // Height of single thumbnail
     thumb_height: usize,
-    // number of columns in the thumbnail sheet // TODO: remove
+    // Number of columns in the thumbnail sheet
     thumb_columns: usize,
 
-    // name of the input file
+    // Name of the input file
     input_filename: String,
-    // name of the file the visual timeline will be written to
+    // Name of the file the visual timeline will be written to
     timeline_filename: Option<String>,
-    // name of the file the thumbnail sheet will be written to
+    // Name of the file the thumbnail sheet will be written to
     thumbnails_filename: Option<String>,
-    // name of the file the VTT file will be written to
+    // Name of the file the VTT file will be written to
     vtt_filename: Option<String>,
 }
 
-// generate a Config from the command line arguments
+// Generate a Config from the command line arguments
 fn parse_config() -> Config {
     let matches = app_from_crate!()
         .arg(
@@ -115,25 +115,30 @@ fn parse_config() -> Config {
         )
         .arg(
             Arg::with_name("vtt")
-                .help("Name of VTT output file")
+                .help("Name of VTT output file, which contains information about the position of
+                      the individual thumbnails in the thumbnails output file. Requires --thumbnails")
                 .long("vtt")
                 .value_name("filename")
                 .requires("thumbnails")
                 .takes_value(true),
         )
+        .after_help("EXAMPLES:
+    timelens video.mp4
+    timelens -w 1000 -h 500 --timeline output.jpg video.mp4
+    timelens --thumbnails thumbnails.jpg --vtt thumbnails.vtt video.mp4")
         .get_matches();
 
-    // default width is 1000
+    // Default width is 1000
     let width_string = matches.value_of("width").unwrap_or("1000");
     let width: usize = width_string.parse().expect("Invalid width");
 
-    // default height is 100
+    // Default height is 100
     let height_string = matches.value_of("height").unwrap_or("100");
     let height: usize = height_string.parse().expect("Invalid height");
 
     let input_filename = matches.value_of("input file").unwrap();
 
-    // set default timeline filename
+    // Set default timeline filename
     let fallback_output = format!("{}.timeline.jpg", &input_filename);
     let timeline_filename = if !matches.is_present("thumbnails") {
         Some(String::from(
@@ -158,13 +163,17 @@ fn parse_config() -> Config {
         None
     };
 
+    check_for_collision(&input_filename, &timeline_filename);
+    check_for_collision(&input_filename, &thumbnails_filename);
+    check_for_collision(&input_filename, &timeline_filename);
+
     Config {
         width,
         height,
 
         thumb_width: 0,
         thumb_height: height,
-        thumb_columns: 20,
+        thumb_columns: 0,
 
         input_filename: String::from(input_filename),
         timeline_filename,
@@ -173,62 +182,57 @@ fn parse_config() -> Config {
     }
 }
 
-// the hard part: actually create timeline and thumbnails file
+// The hard part: actually create timeline and thumbnails file
 fn generate_timeline_and_thumbnails(
     config: &Config,
-    source: source::VideoSource,
+    source: &mut source::VideoSource,
 ) -> (frame::Frame, frame::Frame) {
-    // frame that will hold the visual timeline
+    // Frame that will hold the visual timeline
     let mut timeline = frame::Frame::new(config.width, config.height);
 
-    // frame that will hold the thumbnail sheet
+    // Frame that will hold the thumbnail sheet
     let thumb_rows = config.width / config.thumb_columns + 1;
     let mut thumbnails = frame::Frame::new(
         config.thumb_width * config.thumb_columns,
         config.thumb_height * thumb_rows,
     );
 
-    // keep track of which columns are already done
+    // Keep track of which columns are already done
     let mut done = vec![0; config.width];
 
-    // remember duration before moving `source`
+    // Remember duration before moving `source`
     let duration = source.duration;
 
-    // iterate over the frames from the source (which arrive in any order)
+    // Iterate over the frames from the source (which arrive in any order)
     for frame in source {
-        // calculate which column this frame belongs to
+        // Calculate which column this frame belongs to
         let i = cmp::min(
             (config.width as f32 * (frame.pts.unwrap() / duration as f32)) as usize,
             config.width - 1,
         );
 
-        // scale frame to 1 pixel width and copy into the timeline
+        // Scale frame to 1 pixel width and copy into the timeline
         let column = frame.scale(1, frame.height);
         timeline.copy(&column, i, 0);
 
-        // copy frame to the thumbnail sheet
+        // Copy frame to the thumbnail sheet
         let tx = i % config.thumb_columns;
         let ty = i / config.thumb_columns;
         thumbnails.copy(&frame, tx * config.thumb_width, ty * config.thumb_height);
 
         done[i as usize] += 1;
 
-        // calculate and report progress
+        // Calculate and report progress
         let columns_done = done.iter().filter(|&n| *n > 0).count();
         let progress = 100.0 * columns_done as f32 / config.width as f32;
         print!("\rtimelens: {:.1}% ", progress);
         stdout().flush().unwrap();
-
-        if !done.contains(&0) {
-            // we are done
-            return (timeline, thumbnails);
-        }
     }
 
     (timeline, thumbnails)
 }
 
-// convert milliseconds to a WebVTT timestamp (which has the format "(HH:)MM:SS.mmmm")
+// Convert milliseconds to a WebVTT timestamp (which has the format "(HH:)MM:SS.mmmm")
 fn timestamp(mseconds_total: i32) -> String {
     let minutes = mseconds_total / (1000 * 60);
     let seconds = (mseconds_total - 1000 * 60 * minutes) / 1000;
@@ -236,7 +240,7 @@ fn timestamp(mseconds_total: i32) -> String {
     format!("{:02}:{:02}.{:03}", minutes, seconds, mseconds)
 }
 
-// write a WebVTT file pointing to the thumbnail locations
+// Write a WebVTT file pointing to the thumbnail locations
 fn write_vtt(config: &Config, duration: f32) {
     let mseconds = (duration * 1_000_000.0) as i32;
 
@@ -279,10 +283,13 @@ fn write_vtt(config: &Config, duration: f32) {
     }
 }
 
-fn check_for_collision(existing: &str, new: &str) {
-    if fs::canonicalize(&PathBuf::from(existing)).unwrap()
-        == fs::canonicalize(&PathBuf::from(new)).unwrap()
-    {
-        panic!("Refusing to overwrite '{}'", existing);
+// Panic if `new_opt` has a value that collides with `existing`
+fn check_for_collision(existing: &str, new_opt: &Option<String>) {
+    if let Some(new) = new_opt {
+        let e = PathBuf::from(existing);
+        let n = PathBuf::from(new);
+        if e.exists() && fs::canonicalize(&e).unwrap() == fs::canonicalize(&n).unwrap() {
+            panic!("Refusing to overwrite '{}'", existing);
+        }
     }
 }

@@ -70,7 +70,7 @@ mod integration {
         fail_with_file("-w 16 --timeline ..");
         fail_with_file("-w 16 --timeline /");
 
-        //fail_with_file(&format!("-w 16 --timeline {}", filename));
+        fail_with_file(&format!("-w 16 --timeline {}", filename));
     }
 
     fn test_file_name() -> String {

@@ -13,6 +13,7 @@ pub struct Frame {
 }
 
 impl Frame {
+    // Initialize a new empty frame of size width*height
     pub fn new(width: usize, height: usize) -> Frame {
         let buffer = gst::Buffer::with_size(width * height * 4).unwrap();
         Frame {
@@ -23,7 +24,7 @@ impl Frame {
         }
     }
 
-    // scale frame to width*height. Only supports horizontal compression so far.
+    // Scale frame to width*height. Only supports horizontal compression so far.
     pub fn scale(&self, width: usize, height: usize) -> Frame {
         assert_eq!(self.height, height);
         assert_eq!(1, width);
@@ -62,7 +63,7 @@ impl Frame {
         frame
     }
 
-    // copy the `other` frame into `self`, with the top left at dx/dy
+    // Copy the `other` frame into `self`, with the top left at dx/dy
     pub fn copy(&mut self, other: &Frame, dx: usize, dy: usize) {
         let mut data = self.buffer.get_mut().unwrap().map_writable().unwrap();
 
@@ -83,7 +84,7 @@ impl Frame {
         }
     }
 
-    // write frame to `filename` as a JPEG using GStreamer
+    // Write frame to `filename` as a JPEG using GStreamer
     pub fn write_to(&self, filename: &str) {
         let src = gst::ElementFactory::make("appsrc", None).unwrap();
 
