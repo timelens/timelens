@@ -18,13 +18,16 @@ fn main() {
     let mut config = parse_config();
 
     // Create and initialize VideoSource
-    let mut source =
-        source::VideoSource::new(&config.input_filename, config.thumb_height, config.width);
+    let mut source = source::VideoSource::new(
+        &config.input_filename,
+        config.thumbnail_height,
+        config.width,
+    );
 
     // Derive thumbnail width and column count from the output width of the VideoSource
-    config.thumb_width = source.width;
+    config.thumbnail_width = source.width;
     let max_image_width = 5000;
-    config.thumb_columns = max_image_width / config.thumb_width;
+    config.thumbnail_columns = max_image_width / config.thumbnail_width;
 
     // The hard part: generate the timeline and the thumbnail sheet
     let (timeline, thumbnails) = generate_timeline_and_thumbnails(&config, &mut source);
@@ -34,19 +37,19 @@ fn main() {
     if let Some(ref timeline_filename) = config.timeline_filename {
         // Write resulting timeline to a file
         timeline.write_to(&timeline_filename);
-        println!("-> '{}'", timeline_filename);
+        println!("-> timeline witten to '{}'", timeline_filename);
     }
 
     if let Some(ref thumbnails_filename) = config.thumbnails_filename {
         // Write resulting thumbnails to a file
         thumbnails.write_to(&thumbnails_filename);
-        println!("-> '{}'", thumbnails_filename);
+        println!("-> thumbnails written to '{}'", thumbnails_filename);
     }
 
     if let Some(ref vtt_filename) = config.vtt_filename {
         // Write the VTT file
         write_vtt(&config, source.duration);
-        println!("-> '{}'", vtt_filename);
+        println!("-> VTT written to '{}'", vtt_filename);
     }
 }
 
@@ -58,11 +61,11 @@ pub struct Config {
     height: usize,
 
     // Width of single thumbnail
-    thumb_width: usize,
+    thumbnail_width: usize,
     // Height of single thumbnail
-    thumb_height: usize,
+    thumbnail_height: usize,
     // Number of columns in the thumbnail sheet
-    thumb_columns: usize,
+    thumbnail_columns: usize,
 
     // Name of the input file
     input_filename: String,
@@ -85,7 +88,7 @@ fn parse_config() -> Config {
         )
         .arg(
             Arg::with_name("width")
-                .help("Set width of the visual timeline in pixels")
+                .help("Set width of the visual timeline [default: height*10, or 1000, if both are unspecified]")
                 .short("w")
                 .long("width")
                 .display_order(0)
@@ -93,17 +96,25 @@ fn parse_config() -> Config {
         )
         .arg(
             Arg::with_name("height")
-                .help("Set height of the visual timeline in pixels")
+                .help("Set height of the visual timeline [default: width/10]")
                 .short("h")
                 .long("height")
-                .display_order(0)
+                .display_order(1)
                 .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("thumbnail height")
+                .help("Set height of the individual thumbnails")
+                .long("thumbnail-height")
+                .takes_value(true)
+                .default_value("90"),
         )
         .arg(
             Arg::with_name("timeline")
                 .help("Name of timeline output file. If no output file is specified at all, write a timeline to 'INPUT_FILE.timeline.jpg' by default")
                 .long("timeline")
                 .value_name("filename")
+                .display_order(10)
                 .takes_value(true),
         )
         .arg(
@@ -111,30 +122,52 @@ fn parse_config() -> Config {
                 .help("Name of thumbnails output file")
                 .long("thumbnails")
                 .value_name("filename")
+                .display_order(11)
                 .takes_value(true),
         )
         .arg(
             Arg::with_name("vtt")
-                .help("Name of VTT output file, which contains information about the position of
-                      the individual thumbnails in the thumbnails output file. Requires --thumbnails")
+                .help("Name of VTT output file, which contains information about the position of the individual thumbnails in the thumbnails output file. Requires --thumbnails")
                 .long("vtt")
                 .value_name("filename")
                 .requires("thumbnails")
+                .display_order(12)
                 .takes_value(true),
         )
         .after_help("EXAMPLES:
     timelens video.mp4
-    timelens -w 1000 -h 500 --timeline output.jpg video.mp4
-    timelens --thumbnails thumbnails.jpg --vtt thumbnails.vtt video.mp4")
+    timelens video.mp4 -w 1000 -h 500 --timeline output.jpg
+    timelens video.mp4 --thumbnails thumbnails.jpg --vtt thumbnails.vtt")
         .get_matches();
 
-    // Default width is 1000
-    let width_string = matches.value_of("width").unwrap_or("1000");
-    let width: usize = width_string.parse().expect("Invalid width");
+    let mut width: Option<usize> = None;
+    let mut height: Option<usize> = None;
 
-    // Default height is 100
-    let height_string = matches.value_of("height").unwrap_or("100");
-    let height: usize = height_string.parse().expect("Invalid height");
+    if matches.is_present("width") {
+        let width_string = matches.value_of("width").unwrap();
+        width = Some(width_string.parse().expect("Invalid width"));
+    }
+
+    if matches.is_present("height") {
+        let height_string = matches.value_of("height").unwrap();
+        height = Some(height_string.parse().expect("Invalid height"));
+    }
+
+    if height.is_none() {
+        if width.is_none() {
+            width = Some(1000);
+        }
+        height = Some(width.unwrap() / 10);
+    } else {
+        if width.is_none() {
+            width = Some(height.unwrap() * 10);
+        }
+    }
+
+    let thumbnail_height_string = matches.value_of("thumbnail height").unwrap_or("90");
+    let thumbnail_height: usize = thumbnail_height_string
+        .parse()
+        .expect("Invalid thumbnail height");
 
     let input_filename = matches.value_of("input file").unwrap();
 
@@ -168,12 +201,13 @@ fn parse_config() -> Config {
     check_for_collision(&input_filename, &timeline_filename);
 
     Config {
-        width,
-        height,
+        width: width.unwrap(),
+        height: height.unwrap(),
 
-        thumb_width: 0,
-        thumb_height: height,
-        thumb_columns: 0,
+        thumbnail_width: 0,
+        //thumbnail_height: height.unwrap(), //thumbnail_height,
+        thumbnail_height: thumbnail_height,
+        thumbnail_columns: 0,
 
         input_filename: String::from(input_filename),
         timeline_filename,
@@ -191,10 +225,10 @@ fn generate_timeline_and_thumbnails(
     let mut timeline = frame::Frame::new(config.width, config.height);
 
     // Frame that will hold the thumbnail sheet
-    let thumb_rows = config.width / config.thumb_columns + 1;
+    let thumbnail_rows = config.width / config.thumbnail_columns + 1;
     let mut thumbnails = frame::Frame::new(
-        config.thumb_width * config.thumb_columns,
-        config.thumb_height * thumb_rows,
+        config.thumbnail_width * config.thumbnail_columns,
+        config.thumbnail_height * thumbnail_rows,
     );
 
     // Keep track of which columns are already done
@@ -211,14 +245,22 @@ fn generate_timeline_and_thumbnails(
             config.width - 1,
         );
 
-        // Scale frame to 1 pixel width and copy into the timeline
-        let column = frame.scale(1, frame.height);
-        timeline.copy(&column, i, 0);
+        if config.timeline_filename.is_some() {
+            // Scale frame to 1 pixel width and copy into the timeline
+            let column = frame.scale(1, config.height);
+            timeline.copy(&column, i, 0);
+        }
 
-        // Copy frame to the thumbnail sheet
-        let tx = i % config.thumb_columns;
-        let ty = i / config.thumb_columns;
-        thumbnails.copy(&frame, tx * config.thumb_width, ty * config.thumb_height);
+        if config.thumbnails_filename.is_some() {
+            // Copy frame to the thumbnail sheet
+            let tx = i % config.thumbnail_columns;
+            let ty = i / config.thumbnail_columns;
+            thumbnails.copy(
+                &frame,
+                tx * config.thumbnail_width,
+                ty * config.thumbnail_height,
+            );
+        }
 
         done[i as usize] += 1;
 
@@ -254,14 +296,14 @@ fn write_vtt(config: &Config, duration: f32) {
         let from = mseconds / (config.width as i32) * (i as i32);
         let to = mseconds / (config.width as i32) * ((i as i32) + 1);
 
-        let tx = i % config.thumb_columns;
-        let ty = i / config.thumb_columns;
+        let tx = i % config.thumbnail_columns;
+        let ty = i / config.thumbnail_columns;
 
-        let x = tx * config.thumb_width;
-        let y = ty * config.thumb_height;
+        let x = tx * config.thumbnail_width;
+        let y = ty * config.thumbnail_height;
 
-        let w = config.thumb_width;
-        let h = config.thumb_height;
+        let w = config.thumbnail_width;
+        let h = config.thumbnail_height;
 
         let filename = Path::new(&thumbnails_filename)
             .file_name()
@@ -288,7 +330,8 @@ fn check_for_collision(existing: &str, new_opt: &Option<String>) {
     if let Some(new) = new_opt {
         let e = PathBuf::from(existing);
         let n = PathBuf::from(new);
-        if e.exists() && n.exists()
+        if e.exists()
+            && n.exists()
             && fs::canonicalize(&e).unwrap() == fs::canonicalize(&n).unwrap()
         {
             panic!("Refusing to overwrite '{}'", existing);

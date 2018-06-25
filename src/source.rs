@@ -177,13 +177,15 @@ fn get_meta(filename: &str) -> (usize, usize, f32) {
 
     // And retrieve width and height from its caps
     let caps = pad.get_current_caps().unwrap();
-    let width = caps.get_structure(0)
+    let width = caps
+        .get_structure(0)
         .unwrap()
         .get_value("width")
         .unwrap()
         .get::<i32>()
         .unwrap() as usize;
-    let height = caps.get_structure(0)
+    let height = caps
+        .get_structure(0)
         .unwrap()
         .get_value("height")
         .unwrap()
@@ -223,8 +225,12 @@ fn build_pipeline(
     let videoscale = gst::ElementFactory::make("videoscale", None).unwrap();
     // Scale frames exactly to the desired size, don't add borders
     videoscale.set_property("add-borders", &false).unwrap();
+    // Use Sinc scaling algorithm, which produces better results when downsampling
+    //videoscale.set_property("method", &"sinc").unwrap();
 
-    let capsfilter = gst::ElementFactory::make("capsfilter", None).unwrap();
+    let method = String::from("sinc");
+
+    let capsfilter = gst::ElementFactory::make("capsfilter", method.as_str()).unwrap();
     capsfilter
         .set_property(
             "caps",
@@ -257,7 +263,8 @@ fn build_pipeline(
 
     gst::Element::link_many(&[&videoconvert, &videorate, &videoscale, &capsfilter, &sink]).unwrap();
 
-    let appsink = sink.clone()
+    let appsink = sink
+        .clone()
         .dynamic_cast::<gst_app::AppSink>()
         .expect("Sink element is expected to be an appsink!");
     // Go as fast as possible :)

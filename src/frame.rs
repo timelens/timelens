@@ -26,10 +26,10 @@ impl Frame {
 
     // Scale frame to width*height. Only supports horizontal compression so far.
     pub fn scale(&self, width: usize, height: usize) -> Frame {
-        assert_eq!(self.height, height);
         assert_eq!(1, width);
 
-        let mut frame = Frame::new(width, height);
+        // First, scale to 1 pixel width
+        let mut frame = Frame::new(1, self.height);
 
         {
             let buffer = frame.buffer.get_mut().unwrap();
@@ -38,7 +38,7 @@ impl Frame {
             let map = self.buffer.map_readable().unwrap();
             let indata = map.as_slice();
 
-            for y in 0..height {
+            for y in 0..self.height {
                 let mut b: usize = 0;
                 let mut g: usize = 0;
                 let mut r: usize = 0;
@@ -60,7 +60,54 @@ impl Frame {
             }
         }
 
-        frame
+        // Then, scale to target height
+        let mut frame2 = Frame::new(width, height);
+
+        {
+            let buffer = frame2.buffer.get_mut().unwrap();
+            let mut data = buffer.map_writable().unwrap();
+
+            let map = frame.buffer.map_readable().unwrap();
+            let indata = map.as_slice();
+
+            let factor = frame.height as f32 / height as f32;
+            println!(
+                "{}x{} to {}x{}, f {}",
+                frame.width, frame.height, width, height, factor
+            );
+
+            for y in 0..height {
+                let mut b: usize = 0;
+                let mut g: usize = 0;
+                let mut r: usize = 0;
+
+                let from = (factor * y as f32) as usize;
+                let mut to = (factor * (y + 1) as f32) as usize;
+
+                if to == from {
+                    to = from + 1;
+                }
+
+                println!("{} -> {}", from, to);
+
+                for y2 in from..to {
+                    b += indata[frame.width * y2 * 4] as usize;
+                    g += indata[frame.width * y2 * 4 + 1] as usize;
+                    r += indata[frame.width * y2 * 4 + 2] as usize;
+                }
+
+                b /= (to - from);
+                g /= (to - from);
+                r /= (to - from);
+
+                data[y * 4] = b as u8;
+                data[y * 4 + 1] = g as u8;
+                data[y * 4 + 2] = r as u8;
+                data[y * 4 + 3] = 255;
+            }
+        }
+
+        frame2
     }
 
     // Copy the `other` frame into `self`, with the top left at dx/dy
@@ -114,7 +161,8 @@ impl Frame {
             .unwrap();
         gst::Element::link_many(&[&src, &capsfilter, &jpegenc, &filesink]).unwrap();
 
-        let appsrc = src.clone()
+        let appsrc = src
+            .clone()
             .dynamic_cast::<gst_app::AppSrc>()
             .expect("Sink element is expected to be an appsrc!");
         appsrc.set_property_format(gst::Format::Time);
