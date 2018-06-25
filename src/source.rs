@@ -35,10 +35,10 @@ impl VideoSource {
         gst::init().unwrap();
 
         // Get size and duration information
-        let (width, height, duration) = get_meta(&filename);
+        let (width, height, aspect_ratio, duration) = get_meta(&filename);
 
         // Calculate which output width keeps the aspect ratio
-        let output_width = (output_height as f32 * width as f32 / height as f32) as usize;
+        let output_width = (output_height as f32 * aspect_ratio) as usize;
 
         // Set up GStreamer pipeline
         let (pipeline, capsfilter, appsink) =
@@ -136,7 +136,7 @@ impl Iterator for VideoSource {
 }
 
 // Get resolution and duration of the input file
-fn get_meta(filename: &str) -> (usize, usize, f32) {
+fn get_meta(filename: &str) -> (usize, usize, f32, f32) {
     // Generate file:// URI from an absolute filename
     let uri = format!(
         "file://{}",
@@ -192,6 +192,19 @@ fn get_meta(filename: &str) -> (usize, usize, f32) {
         .get::<i32>()
         .unwrap() as usize;
 
+    // Pixels aren't necessarily square, so we need to get their aspect ratio to calculate the
+    // aspect ratio of the video
+    let pixel_aspect_ratio = caps
+        .get_structure(0)
+        .unwrap()
+        .get_value("pixel-aspect-ratio")
+        .unwrap()
+        .get::<gst::Fraction>()
+        .unwrap();
+    let aspect_ratio = width as f32 * *pixel_aspect_ratio.numer() as f32
+        / height as f32
+        / *pixel_aspect_ratio.denom() as f32;
+
     // Also, query the pipeline for the duration and convert to seconds
     let duration_clocktime: gst::ClockTime = pipeline.query_duration().unwrap();
     let duration = duration_clocktime.nseconds().unwrap() as f32 / 1_000_000_000.0;
@@ -199,7 +212,7 @@ fn get_meta(filename: &str) -> (usize, usize, f32) {
     // Stop the pipeline again
     pipeline.set_state(gst::State::Null).into_result().unwrap();
 
-    (width, height, duration)
+    (width, height, aspect_ratio, duration)
 }
 
 // Build a pipeline that decodes the video to BGRx at 1 FPS, scales the frames to thumbnail size,
@@ -226,7 +239,7 @@ fn build_pipeline(
     // Scale frames exactly to the desired size, don't add borders
     videoscale.set_property("add-borders", &false).unwrap();
     // Use Sinc scaling algorithm, which produces better results when downsampling
-    //videoscale.set_property("method", &"sinc").unwrap();
+    videoscale.set_property_from_str("method", "sinc");
 
     let method = String::from("sinc");
 
