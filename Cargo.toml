@@ -10,7 +10,6 @@ documentation = "https://timelens.io"
 description = "Creates visual timelines from video files"
 
 [dependencies]
-glib = "0.5.0"
 gstreamer = "0.11.3"
 gstreamer-app = "0.11.2"
 clap = "2.31.2"
