@@ -71,10 +71,6 @@ impl Frame {
             let indata = map.as_slice();
 
             let factor = frame.height as f32 / height as f32;
-            println!(
-                "{}x{} to {}x{}, f {}",
-                frame.width, frame.height, width, height, factor
-            );
 
             for y in 0..height {
                 let mut b: usize = 0;
@@ -87,8 +83,6 @@ impl Frame {
                 if to == from {
                     to = from + 1;
                 }
-
-                println!("{} -> {}", from, to);
 
                 for y2 in from..to {
                     b += indata[frame.width * y2 * 4] as usize;

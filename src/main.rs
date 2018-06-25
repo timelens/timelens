@@ -1,7 +1,10 @@
 #[macro_use]
 extern crate clap;
+extern crate colored;
 
+use clap::AppSettings;
 use clap::Arg;
+use colored::*;
 use std::cmp;
 use std::fs;
 use std::fs::File;
@@ -79,7 +82,33 @@ pub struct Config {
 
 // Generate a Config from the command line arguments
 fn parse_config() -> Config {
+    let examples = vec![
+        (
+            "video.mp4",
+            "Generate video.mp4.timeline.jpg of default size",
+        ),
+        (
+            "video.mp4 -w 1000 -h 500 --timeline output.jpg",
+            "Override size and name of the timeline file",
+        ),
+        (
+            "video.mp4 --thumbnails thumbnails.jpg --vtt thumbnails.vtt",
+            "Generate a thumbnail sheet and a corresponding VTT file",
+        ),
+    ];
+
+    let examples_string = examples
+        .iter()
+        .map(|(cmd, desc)| format!("    {}\n            {}\n", cmd.green(), desc))
+        .collect::<Vec<String>>()
+        .join("");
+
+    let examples_section = format!("{}:\n{}", "EXAMPLES".yellow(), &examples_string);
+
     let matches = app_from_crate!()
+        .setting(AppSettings::ArgRequiredElseHelp)
+        .setting(AppSettings::ColoredHelp)
+        .setting(AppSettings::NextLineHelp)
         .arg(
             Arg::with_name("input file")
                 .help("Name of the video file")
@@ -88,7 +117,7 @@ fn parse_config() -> Config {
         )
         .arg(
             Arg::with_name("width")
-                .help("Set width of the visual timeline [default: height*10, or 1000, if both are unspecified]")
+                .help("Set width of the visual timeline [default: height*10, or 1000, if height is unspecified]")
                 .short("w")
                 .long("width")
                 .display_order(0)
@@ -107,7 +136,7 @@ fn parse_config() -> Config {
                 .help("Set height of the individual thumbnails")
                 .long("thumbnail-height")
                 .takes_value(true)
-                .default_value("90"),
+                .value_name("height")
         )
         .arg(
             Arg::with_name("timeline")
@@ -134,10 +163,7 @@ fn parse_config() -> Config {
                 .display_order(12)
                 .takes_value(true),
         )
-        .after_help("EXAMPLES:
-    timelens video.mp4
-    timelens video.mp4 -w 1000 -h 500 --timeline output.jpg
-    timelens video.mp4 --thumbnails thumbnails.jpg --vtt thumbnails.vtt")
+        .after_help(examples_section.as_str())
         .get_matches();
 
     let mut width: Option<usize> = None;

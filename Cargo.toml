@@ -12,7 +12,12 @@ description = "Creates visual timelines from video files"
 [dependencies]
 gstreamer = "0.11.3"
 gstreamer-app = "0.11.2"
-clap = "2.31.2"
+ansi_term = "0.11.0"
+colored = "1.6.0"
+
+[dependencies.clap]
+version = "2.31.2"
+features = ["wrap_help"]
 
 [dev-dependencies]
 assert_cmd = "0.3"
