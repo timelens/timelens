@@ -150,9 +150,11 @@ fn get_meta(filename: &str) -> (usize, usize, f32) {
     let playbin = gst::ElementFactory::make("playbin", None).unwrap();
     playbin.set_property("uri", &uri).unwrap();
 
-    // We don't actually want any output, so we connect the playbin to a fakesink
+    // We don't actually want any output, so we connect the playbin to fakesinks
     let fakesink = gst::ElementFactory::make("fakesink", None).unwrap();
+    let fakesink2 = gst::ElementFactory::make("fakesink", None).unwrap();
     playbin.set_property("video-sink", &fakesink).unwrap();
+    playbin.set_property("audio-sink", &fakesink2).unwrap();
 
     // Create a pipeline and add the playbin to it
     let pipeline = gst::Pipeline::new(None);
