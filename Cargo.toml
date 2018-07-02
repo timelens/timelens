@@ -20,4 +20,6 @@ version = "2.31.2"
 features = ["wrap_help"]
 
 [dev-dependencies]
-assert_cmd = "0.3"
+assert_cmd = "0.3.0"
+predicates = "0.5.1"
+assert_fs = "0.3.0"

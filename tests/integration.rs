@@ -1,11 +1,17 @@
+#![feature(extern_prelude)]
+
 extern crate assert_cmd;
+extern crate assert_fs;
 extern crate gstreamer as gst;
+extern crate predicates;
 
 #[cfg(test)]
 mod integration {
     use assert_cmd::prelude::*;
+    use assert_fs::prelude::*;
     use gst;
     use gst::prelude::*;
+    use predicates::prelude::*;
     use std::env;
     use std::path::Path;
     use std::process::Command;
@@ -30,7 +36,7 @@ mod integration {
         fail("\\");
 
         // ok_with_file("-w 1");
-        ok_with_file("-w 16");
+        ok_with_file("-w 16 -h 16");
     }
 
     #[test]
@@ -55,9 +61,9 @@ mod integration {
         fail_with_file("-w ''");
         fail_with_file("-h ''");
 
-        ok_with_file("-w 16");
-        ok_with_file("-h 16");
         ok_with_file("-w 16 -h 16");
+        ok_with_file("-h 16");
+        ok_with_file("-w 160");
     }
 
     #[test]
@@ -71,6 +77,33 @@ mod integration {
         fail_with_file("-w 16 --timeline /");
 
         fail_with_file(&format!("-w 16 --timeline {}", filename));
+    }
+
+    #[test]
+    fn vtt() {
+        let tmp_dir = assert_fs::TempDir::new().unwrap();
+        let vtt_file = tmp_dir.child("test.vtt");
+        let thumbnails_file = tmp_dir.child("test.jpg");
+
+        ok_with_file(&format!(
+            "--vtt {} --thumbnails {} -w 16 -h 16",
+            &vtt_file.path().to_str().unwrap(),
+            &thumbnails_file.path().to_str().unwrap()
+        ));
+
+        thumbnails_file.assert(predicate::path::is_file());
+        vtt_file.assert(predicate::path::is_file());
+        vtt_file.assert(
+            predicate::str::contains("test.jpg?xywh=0,0,120,90")
+                .from_utf8()
+                .from_file_path(),
+        );
+        vtt_file.assert(
+            predicate::str::contains("nope")
+                .not()
+                .from_utf8()
+                .from_file_path(),
+        );
     }
 
     fn test_file_name() -> String {
