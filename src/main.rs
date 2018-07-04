@@ -85,21 +85,27 @@ fn parse_config() -> Config {
     let examples = vec![
         (
             "video.mp4",
-            "Generate video.mp4.timeline.jpg of default size",
+            "Generate video.mp4.timeline.jpg of default size.",
         ),
         (
             "video.mp4 -w 1000 -h 500 --timeline output.jpg",
-            "Override size and name of the timeline file",
+            "Override size and name of the timeline file.",
         ),
         (
             "video.mp4 --thumbnails thumbnails.jpg --vtt thumbnails.vtt",
-            "Generate a thumbnail sheet and a corresponding VTT file",
+            "Generate a thumbnail sheet and a corresponding VTT file.",
         ),
     ];
 
     let examples_string = examples
         .iter()
-        .map(|(cmd, desc)| format!("    {}\n            {}\n", cmd.green(), desc))
+        .map(|(cmd, desc)| {
+            format!(
+                "    {}\n            {}\n",
+                format!("timelens {}", &cmd).green(),
+                desc
+            )
+        })
         .collect::<Vec<String>>()
         .join("");
 
@@ -109,15 +115,16 @@ fn parse_config() -> Config {
         .setting(AppSettings::ArgRequiredElseHelp)
         .setting(AppSettings::ColoredHelp)
         .setting(AppSettings::NextLineHelp)
+        .help_message("Print help information.")
         .arg(
             Arg::with_name("input file")
-                .help("Name of the video file")
+                .help("Name of the input video file.")
                 .index(1)
                 .required(true),
         )
         .arg(
             Arg::with_name("width")
-                .help("Set width of the visual timeline [default: height*10, or 1000, if height is unspecified]")
+                .help("Set width of the visual timeline [default: height*10, or 1000, if height is unspecified].")
                 .short("w")
                 .long("width")
                 .display_order(0)
@@ -125,7 +132,7 @@ fn parse_config() -> Config {
         )
         .arg(
             Arg::with_name("height")
-                .help("Set height of the visual timeline [default: width/10]")
+                .help("Set height of the visual timeline [default: width/10].")
                 .short("h")
                 .long("height")
                 .display_order(1)
@@ -133,14 +140,15 @@ fn parse_config() -> Config {
         )
         .arg(
             Arg::with_name("thumbnail height")
-                .help("Set height of the individual thumbnails")
+                .help("Set height of the individual thumbnails [default: 90].")
                 .long("thumbnail-height")
+                .short("H")
                 .takes_value(true)
                 .value_name("height")
         )
         .arg(
             Arg::with_name("timeline")
-                .help("Name of timeline output file. If no output file is specified at all, write a timeline to 'INPUT_FILE.timeline.jpg' by default")
+                .help("Name of timeline output file. If no output file is specified at all, write a timeline to 'INPUT_FILE.timeline.jpg' by default.")
                 .long("timeline")
                 .value_name("filename")
                 .display_order(10)
@@ -148,7 +156,7 @@ fn parse_config() -> Config {
         )
         .arg(
             Arg::with_name("thumbnails")
-                .help("Name of thumbnails output file")
+                .help("Name of thumbnail sheet output file.")
                 .long("thumbnails")
                 .value_name("filename")
                 .display_order(11)
@@ -156,7 +164,7 @@ fn parse_config() -> Config {
         )
         .arg(
             Arg::with_name("vtt")
-                .help("Name of VTT output file, which contains information about the position of the individual thumbnails in the thumbnails output file. Requires --thumbnails")
+                .help("Name of VTT output file, which contains information about the position of the individual thumbnails in the thumbnail sheet. Requires the --thumbnails option.")
                 .long("vtt")
                 .value_name("filename")
                 .requires("thumbnails")
