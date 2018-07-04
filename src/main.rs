@@ -192,10 +192,8 @@ fn parse_config() -> Config {
             width = Some(1000);
         }
         height = Some(width.unwrap() / 10);
-    } else {
-        if width.is_none() {
-            width = Some(height.unwrap() * 10);
-        }
+    } else if width.is_none() {
+        width = Some(height.unwrap() * 10);
     }
 
     let thumbnail_height_string = matches.value_of("thumbnail height").unwrap_or("90");
@@ -207,15 +205,15 @@ fn parse_config() -> Config {
 
     // Set default timeline filename
     let fallback_output = format!("{}.timeline.jpg", &input_filename);
-    let timeline_filename = if !matches.is_present("thumbnails") {
-        Some(String::from(
-            matches.value_of("timeline").unwrap_or(&fallback_output),
-        ))
-    } else {
+    let timeline_filename = if matches.is_present("thumbnails") {
         match matches.value_of("timeline") {
             Some(timeline) => Some(String::from(timeline)),
             None => None,
         }
+    } else {
+        Some(String::from(
+            matches.value_of("timeline").unwrap_or(&fallback_output),
+        ))
     };
 
     let thumbnails_filename = if matches.is_present("thumbnails") {

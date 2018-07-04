@@ -90,9 +90,9 @@ impl Frame {
                     r += indata[frame.width * y2 * 4 + 2] as usize;
                 }
 
-                b /= (to - from);
-                g /= (to - from);
-                r /= (to - from);
+                b /= to - from;
+                g /= to - from;
+                r /= to - from;
 
                 data[y * 4] = b as u8;
                 data[y * 4 + 1] = g as u8;

@@ -35,7 +35,7 @@ impl VideoSource {
         gst::init().unwrap();
 
         // Get size and duration information
-        let (width, height, aspect_ratio, duration) = get_meta(&filename);
+        let (aspect_ratio, duration) = get_meta(&filename);
 
         // Calculate which output width keeps the aspect ratio
         let output_width = (output_height as f32 * aspect_ratio) as usize;
@@ -136,7 +136,7 @@ impl Iterator for VideoSource {
 }
 
 // Get resolution and duration of the input file
-fn get_meta(filename: &str) -> (usize, usize, f32, f32) {
+fn get_meta(filename: &str) -> (f32, f32) {
     // Generate file:// URI from an absolute filename
     let uri = format!(
         "file://{}",
@@ -212,7 +212,7 @@ fn get_meta(filename: &str) -> (usize, usize, f32, f32) {
     // Stop the pipeline again
     pipeline.set_state(gst::State::Null).into_result().unwrap();
 
-    (width, height, aspect_ratio, duration)
+    (aspect_ratio, duration)
 }
 
 // Build a pipeline that decodes the video to BGRx at 1 FPS, scales the frames to thumbnail size,
