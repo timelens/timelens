@@ -310,7 +310,7 @@ fn timestamp(mseconds_total: i32) -> String {
 
 // Write a WebVTT file pointing to the thumbnail locations
 fn write_vtt(config: &Config, duration: f32) {
-    let mseconds = (duration * 1_000_000.0) as i32;
+    let mseconds = (duration * 1_000.0) as i32;
 
     let thumbnails_filename = config.thumbnails_filename.clone().unwrap();
     let vtt_filename = config.vtt_filename.clone().unwrap();
