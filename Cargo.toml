@@ -7,12 +7,19 @@ homepage = "https://timelens.io"
 license = "GPL-2.0-or-later"
 readme = "README.md"
 documentation = "https://timelens.io"
-description = "Creates visual timelines and thumbnail sheets from video files"
+description = """
+Timelens creates visual timelines from video files, which visualize
+the videos' color development and can be integrated into video players.
+That way, users can navigate videos more precisely and actively.
+
+Additionally, Timelens can create thumbnail grids, which can be used
+to display preview images when the user hovers over the visual timeline.
+Timelens can output a VTT file, which references the thumbnails' positions.
+"""
 
 [dependencies]
 gstreamer = "0.11.3"
 gstreamer-app = "0.11.2"
-ansi_term = "0.11.0"
 colored = "1.6.0"
 
 [dependencies.clap]

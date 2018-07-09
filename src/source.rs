@@ -62,7 +62,7 @@ impl VideoSource {
         }
 
         // Approximate which FPS value is required to output n frames in total
-        let fps = gst::Fraction::new(n as i32, duration as i32);
+        let fps = gst::Fraction::new((n * 100) as i32, (duration * 100.0) as i32);
 
         // Set the capsfilter element correctly so that the pipeline will output the correct format
         capsfilter
