@@ -6,8 +6,8 @@
 
 Timelens is written in the Rust programming language, so you'll need a working [Rust installation](https://www.rust-lang.org). You'll probably want to run these commands:
 
-    $ curl -f https://sh.rustup.rs > rustup-init.sh
-    $ ./rustup-init.sh
+    $ curl -f https://sh.rustup.rs > rust.sh
+    $ sh rust.sh
     $ source ~/.cargo/env
 
 Then, compiling Timelens is as easy as this:
