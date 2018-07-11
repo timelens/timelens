@@ -30,12 +30,12 @@ impl VideoSource {
     //
     // Any frames this source outputs will be `output_height` pixels high. The source will try to
     // output approximately `n` frames.
-    pub fn new(filename: &str, output_height: usize, n: usize) -> VideoSource {
+    pub fn new(filename: &str, output_height: usize, n: usize) -> Result<VideoSource, String> {
         // Initialize GStreamer
         gst::init().unwrap();
 
         // Get size and duration information
-        let (aspect_ratio, duration) = get_meta(&filename);
+        let (aspect_ratio, duration) = get_meta(&filename)?;
 
         // Calculate which output width keeps the aspect ratio
         let output_width = (output_height as f32 * aspect_ratio) as usize;
@@ -81,7 +81,7 @@ impl VideoSource {
             .unwrap();
 
         // Return the new VideoSource
-        VideoSource {
+        Ok(VideoSource {
             width: output_width,
             height: output_height,
             duration,
@@ -90,7 +90,7 @@ impl VideoSource {
             appsink,
             n,
             next_column: 0,
-        }
+        })
     }
 }
 
@@ -136,15 +136,35 @@ impl Iterator for VideoSource {
 }
 
 // Get resolution and duration of the input file
-fn get_meta(filename: &str) -> (f32, f32) {
+fn get_meta(filename: &str) -> Result<(f32, f32), String> {
     // Generate file:// URI from an absolute filename
-    let uri = format!(
-        "file://{}",
-        fs::canonicalize(&PathBuf::from(filename))
-            .unwrap()
-            .to_str()
-            .unwrap()
-    );
+    let path = PathBuf::from(filename);
+
+    if path.is_dir() {
+        return Err(String::from(format!(
+            "Input argument '{}' is a directory. Please specify a file.",
+            &filename
+        )));
+    }
+
+    if !path.is_file() {
+        return Err(String::from(format!(
+            "Input file '{}' could not be found.",
+            &filename
+        )));
+    }
+
+    let absolute = match fs::canonicalize(&path) {
+        Ok(path) => path,
+        Err(err) => {
+            return Err(String::from(format!(
+                "Input file could not be opened: {}",
+                &err
+            )));
+        }
+    };
+    let absolute = absolute.to_str().unwrap();
+    let uri = format!("file://{}", absolute);
 
     // Set up a playbin element, which automatically select decoders
     let playbin = gst::ElementFactory::make("playbin", None).unwrap();
@@ -161,19 +181,22 @@ fn get_meta(filename: &str) -> (f32, f32) {
     pipeline.add(&playbin).unwrap();
 
     // Set pipeline state to "paused" to start pad negotiation
-    pipeline
-        .set_state(gst::State::Paused)
-        .into_result()
-        .unwrap();
+    match pipeline.set_state(gst::State::Paused).into_result() {
+        Ok(_) => (),
+        Err(err) => {
+            return Err(String::from("Input file could not be opened"));
+        }
+    }
     pipeline.get_state(10 * gst::SECOND);
 
     // Get the sinkpad of the first video stream
-    let pad = playbin
-        .emit("get-video-pad", &[&0])
-        .unwrap()
-        .unwrap()
-        .get::<gst::Pad>()
-        .unwrap();
+    let pad = playbin.emit("get-video-pad", &[&0]).unwrap().unwrap();
+
+    let pad = if let Some(pad) = pad.get::<gst::Pad>() {
+        pad
+    } else {
+        return Err(String::from("This does not seem to be a video file."));
+    };
 
     // And retrieve width and height from its caps
     let caps = pad.get_current_caps().unwrap();
@@ -212,7 +235,7 @@ fn get_meta(filename: &str) -> (f32, f32) {
     // Stop the pipeline again
     pipeline.set_state(gst::State::Null).into_result().unwrap();
 
-    (aspect_ratio, duration)
+    Ok((aspect_ratio, duration))
 }
 
 // Build a pipeline that decodes the video to BGRx at 1 FPS, scales the frames to thumbnail size,

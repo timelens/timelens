@@ -22,11 +22,14 @@ fn main() {
     let mut config = parse_config();
 
     // Create and initialize VideoSource
-    let mut source = source::VideoSource::new(
+    let mut source = match source::VideoSource::new(
         &config.input_filename,
         config.thumbnail_height,
         config.width,
-    );
+    ) {
+        Ok(source) => source,
+        Err(message) => error(&message),
+    };
 
     // Derive thumbnail width and column count from the output width of the VideoSource
     config.thumbnail_width = source.width;
