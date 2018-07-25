@@ -21,18 +21,19 @@ fn main() {
     // Parse the command line arguments
     let mut config = parse_config();
 
-    // Create and initialize VideoSource
-    let mut source = match source::VideoSource::new(
-        &config.input_filename,
-        config.thumbnail_height,
-        config.width,
-    ) {
-        Ok(source) => source,
-        Err(message) => error(&message),
-    };
+    // Set source height to the timeline height, or the thumbnail height, whichever is larger.
+    let source_height = cmp::max(config.thumbnail_height, config.height);
 
-    // Derive thumbnail width and column count from the output width of the VideoSource
-    config.thumbnail_width = source.width;
+    // Create and initialize VideoSource
+    let mut source =
+        match source::VideoSource::new(&config.input_filename, source_height, config.width) {
+            Ok(source) => source,
+            Err(message) => error(&message),
+        };
+
+    // Derive thumbnail width and column count from the aspect ratio of the VideoSource
+    let aspect_ratio = source.width as f32 / source.height as f32;
+    config.thumbnail_width = (aspect_ratio * config.thumbnail_height as f32) as usize;
     let max_image_width = 5000;
     config.thumbnail_columns = max_image_width / config.thumbnail_width;
 
@@ -347,11 +348,12 @@ fn generate_timeline_and_thumbnails(
         }
 
         if config.thumbnails_filename.is_some() {
+            let thumbnail = frame.scale(config.thumbnail_width, config.thumbnail_height);
             // Copy frame to the thumbnail grid
             let tx = i % config.thumbnail_columns;
             let ty = i / config.thumbnail_columns;
             thumbnails.copy(
-                &frame,
+                &thumbnail,
                 tx * config.thumbnail_width,
                 ty * config.thumbnail_height,
             );
