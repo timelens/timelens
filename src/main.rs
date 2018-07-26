@@ -13,6 +13,7 @@ use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process;
+use std::time::{Duration, SystemTime};
 
 mod frame;
 mod source;
@@ -336,6 +337,8 @@ fn generate_timeline_and_thumbnails(
     // Remember duration before moving `source`
     let duration = source.duration;
 
+    let start_time = SystemTime::now();
+
     // Iterate over the frames from the source (which arrive in any order)
     for frame in source {
         // Calculate which column this frame belongs to
@@ -363,7 +366,24 @@ fn generate_timeline_and_thumbnails(
         // Calculate and report progress
         let columns_done = done.iter().filter(|&n| *n > 0).count();
         let progress = 100.0 * columns_done as f32 / config.width as f32;
+
         print!("\rtimelens: {:.1}% ", progress);
+
+        // Estimate how long the rest of the generation will take
+        if progress > 0.5 {
+            let elapsed = start_time.elapsed().unwrap_or(Duration::new(0, 0));
+            let elapsed_seconds =
+                elapsed.as_secs() as f32 + elapsed.subsec_millis() as f32 / 1000.0;
+            let estimated_remaining = elapsed_seconds * (100.0 - progress) / progress as f32 + 1.0;
+            let estimated_remaining_minutes = estimated_remaining as usize / 60;
+            let estimated_remaining_seconds = estimated_remaining as usize % 60;
+
+            print!(
+                "({}:{:02} remaining) ",
+                estimated_remaining_minutes, estimated_remaining_seconds
+            );
+        }
+
         stdout().flush().unwrap();
     }
 
