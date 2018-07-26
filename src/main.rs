@@ -17,6 +17,10 @@ use std::process;
 mod frame;
 mod source;
 
+// Maximum dimensions of a single thumbnail grid
+const MAX_GRID_WIDTH: usize = 1000;
+const MAX_GRID_HEIGHT: usize = 1000;
+
 fn main() {
     // Parse the command line arguments
     let mut config = parse_config();
@@ -38,7 +42,7 @@ fn main() {
     config.thumbnail_columns = max_image_width / config.thumbnail_width;
 
     // The hard part: generate the timeline and the thumbnail grid
-    let (timeline, thumbnails) = generate_timeline_and_thumbnails(&config, &mut source);
+    let (timeline, thumbnail_grids) = generate_timeline_and_thumbnails(&config, &mut source);
 
     println!();
 
@@ -52,12 +56,15 @@ fn main() {
         // Write the VTT file
         write_vtt(&config, source.duration);
         println!("-> VTT written to '{}'", vtt_filename);
-    }
 
-    if let Some(ref thumbnails_filename) = config.thumbnails_filename {
-        // Write resulting thumbnails to a file
-        thumbnails.write_to(&thumbnails_filename);
-        println!("-> thumbnail grid written to '{}'", thumbnails_filename);
+        print!("-> thumbnail grids written to");
+        for (i, grid) in thumbnail_grids.iter().enumerate() {
+            // Write resulting thumbnails to a file
+            let grid_filename = grid_filename(i, &config);
+            grid.write_to(&grid_filename);
+            print!(" '{}'", grid_filename);
+        }
+        println!();
     }
 }
 
@@ -79,8 +86,6 @@ pub struct Config {
     input_filename: String,
     // Name of the file the visual timeline will be written to
     timeline_filename: Option<String>,
-    // Name of the file the thumbnail grid will be written to
-    thumbnails_filename: Option<String>,
     // Name of the file the VTT file will be written to
     vtt_filename: Option<String>,
 }
@@ -281,15 +286,7 @@ fn parse_config() -> Config {
         None
     };
 
-    // Set VTT filename
-    let thumbnails_filename = if vtt_filename.is_some() {
-        Some(vtt_filename.clone().unwrap().replace(".vtt", "-01.jpg"))
-    } else {
-        None
-    };
-
     check_for_collision(&input_filename, &timeline_filename);
-    check_for_collision(&input_filename, &thumbnails_filename);
     check_for_collision(&input_filename, &vtt_filename);
 
     Config {
@@ -302,7 +299,6 @@ fn parse_config() -> Config {
 
         input_filename: String::from(input_filename),
         timeline_filename,
-        thumbnails_filename,
         vtt_filename,
     }
 }
@@ -316,16 +312,23 @@ fn error(message: &str) -> ! {
 fn generate_timeline_and_thumbnails(
     config: &Config,
     source: &mut source::VideoSource,
-) -> (frame::Frame, frame::Frame) {
+) -> (frame::Frame, Vec<frame::Frame>) {
     // Frame that will hold the visual timeline
     let mut timeline = frame::Frame::new(config.width, config.height);
 
-    // Frame that will hold the thumbnail grid
-    let thumbnail_rows = config.width / config.thumbnail_columns + 1;
-    let mut thumbnails = frame::Frame::new(
-        config.thumbnail_width * config.thumbnail_columns,
-        config.thumbnail_height * thumbnail_rows,
-    );
+    let mut grids = vec![];
+
+    // Frames that will hold the thumbnail grids
+    let grid_columns = MAX_GRID_WIDTH / config.thumbnail_width;
+    let grid_rows = MAX_GRID_HEIGHT / config.thumbnail_height;
+
+    let grid_count = config.width / (grid_columns * grid_rows) + 1;
+    let grid_width = grid_columns * config.thumbnail_width;
+    let grid_height = grid_rows * config.thumbnail_height;
+
+    for _ in 0..grid_count {
+        grids.push(frame::Frame::new(grid_width, grid_height));
+    }
 
     // Keep track of which columns are already done
     let mut done = vec![0; config.width];
@@ -341,22 +344,18 @@ fn generate_timeline_and_thumbnails(
             config.width - 1,
         );
 
+        let (file, x, y) = grid_position(i, &config);
+
         if config.timeline_filename.is_some() {
             // Scale frame to 1 pixel width and copy into the timeline
             let column = frame.scale(1, config.height);
             timeline.copy(&column, i, 0);
         }
 
-        if config.thumbnails_filename.is_some() {
+        if config.vtt_filename.is_some() {
             let thumbnail = frame.scale(config.thumbnail_width, config.thumbnail_height);
             // Copy frame to the thumbnail grid
-            let tx = i % config.thumbnail_columns;
-            let ty = i / config.thumbnail_columns;
-            thumbnails.copy(
-                &thumbnail,
-                tx * config.thumbnail_width,
-                ty * config.thumbnail_height,
-            );
+            grids[file].copy(&thumbnail, x, y);
         }
 
         done[i as usize] += 1;
@@ -368,7 +367,7 @@ fn generate_timeline_and_thumbnails(
         stdout().flush().unwrap();
     }
 
-    (timeline, thumbnails)
+    (timeline, grids)
 }
 
 // Convert milliseconds to a WebVTT timestamp (which has the format "(HH:)MM:SS.mmmm")
@@ -383,7 +382,6 @@ fn timestamp(mseconds_total: i32) -> String {
 fn write_vtt(config: &Config, duration: f32) {
     let mseconds = (duration * 1_000.0) as i32;
 
-    let thumbnails_filename = config.thumbnails_filename.clone().unwrap();
     let vtt_filename = config.vtt_filename.clone().unwrap();
 
     let mut f = match File::create(&vtt_filename) {
@@ -404,16 +402,14 @@ fn write_vtt(config: &Config, duration: f32) {
         let from = mseconds / (config.width as i32) * (i as i32);
         let to = mseconds / (config.width as i32) * ((i as i32) + 1);
 
-        let tx = i % config.thumbnail_columns;
-        let ty = i / config.thumbnail_columns;
-
-        let x = tx * config.thumbnail_width;
-        let y = ty * config.thumbnail_height;
+        let (file, x, y) = grid_position(i, &config);
 
         let w = config.thumbnail_width;
         let h = config.thumbnail_height;
 
-        let filename = Path::new(&thumbnails_filename)
+        let grid_filename = grid_filename(file, &config);
+
+        let filename = Path::new(&grid_filename)
             .file_name()
             .unwrap()
             .to_str()
@@ -445,4 +441,29 @@ fn check_for_collision(existing: &str, new_opt: &Option<String>) {
             error(&format!("Refusing to overwrite '{}'", existing));
         }
     }
+}
+
+// For the i-th thumbnail, returns the number of the thumbnail grid it should be placed in, as well
+// as the x and y position in that file.
+fn grid_position(i: usize, config: &Config) -> (usize, usize, usize) {
+    let grid_columns = MAX_GRID_WIDTH / config.thumbnail_width;
+    let grid_rows = MAX_GRID_HEIGHT / config.thumbnail_height;
+
+    let file = i / (grid_columns * grid_rows);
+    let pos = i % (grid_columns * grid_rows);
+    let row = pos / grid_columns;
+    let column = pos % grid_columns;
+
+    (
+        file,
+        column * config.thumbnail_width,
+        row * config.thumbnail_height,
+    )
+}
+
+// Returns the filename of the i-th thumbnail grid.
+fn grid_filename(i: usize, config: &Config) -> String {
+    let vtt_filename = config.vtt_filename.clone().unwrap();
+    let stem = &vtt_filename[..vtt_filename.len() - 4];
+    format!("{}-{:02}.jpg", stem, i)
 }

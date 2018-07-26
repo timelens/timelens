@@ -176,8 +176,6 @@ impl Frame {
 
             appsrc.end_of_stream().into_result().unwrap();
 
-            let bus = pipeline.get_bus().unwrap();
-
             let sample = appsink.pull_sample().unwrap();
 
             pipeline.set_state(gst::State::Null).into_result().unwrap();
@@ -236,6 +234,7 @@ impl Frame {
             .unwrap();
 
         let jpegenc = gst::ElementFactory::make("jpegenc", None).unwrap();
+        jpegenc.set_property("quality", &40).unwrap();
         let filesink = gst::ElementFactory::make("filesink", None).unwrap();
         filesink.set_property("location", &filename).unwrap();
 
