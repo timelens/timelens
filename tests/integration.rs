@@ -65,8 +65,8 @@ mod integration {
         fail_with_file("-w 15");
         fail_with_file("-h 15");
 
-        fail_with_file("-w 16 -h 65501");
-        fail_with_file("-w 65501 -h 16");
+        fail_with_file("-w 16 -h 10001");
+        fail_with_file("-w 10001 -h 16");
 
         fail_with_file("-w 159");
 
@@ -80,8 +80,8 @@ mod integration {
         ok_with_file("-h 1000");
         ok_with_file("-w 1000 -h 1000");
 
-        //ok_with_file("-w 65500");
-        ok_with_file("-w 16 -h 65500");
+        ok_with_file("-w 10000");
+        ok_with_file("-w 16 -h 10000");
     }
 
     #[test]
@@ -134,13 +134,9 @@ mod integration {
             "--thumbnails {} -H 100",
             &vtt_file.path().to_str().unwrap()
         ));
-        //ok_with_file(&format!(
-        //    "--thumbnails {} -H 65500",
-        //    &vtt_file.path().to_str().unwrap()
-        //));
 
         fail_with_file(&format!(
-            "--thumbnails {} -H 65501",
+            "--thumbnails {} -H 10001",
             &vtt_file.path().to_str().unwrap()
         ));
     }
@@ -161,7 +157,7 @@ mod integration {
         thumbnails_file.assert(predicate::path::is_file());
         vtt_file.assert(predicate::path::is_file());
         vtt_file.assert(
-            predicate::str::contains("test-01.jpg?xywh=0,0,160,120")
+            predicate::str::contains("test")
                 .from_utf8()
                 .from_file_path(),
         );

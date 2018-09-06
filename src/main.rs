@@ -235,12 +235,12 @@ fn parse_config() -> Config {
         error("Timeline height must be at least 16");
     }
 
-    if width.unwrap() > 65500 {
-        error("Timeline width must be at most 65500");
+    if width.unwrap() > 10000 {
+        error("Timeline width must be at most 10000");
     }
 
-    if height.unwrap() > 65500 {
-        error("Timeline height must be at most 65500");
+    if height.unwrap() > 10000 {
+        error("Timeline height must be at most 10000");
     }
 
     //Set thumbnail height
@@ -255,8 +255,8 @@ fn parse_config() -> Config {
         error("Thumbnail height must be at least 16");
     }
 
-    if thumbnail_height > 65500 {
-        error("Thumbnail height must be at most 65500");
+    if thumbnail_height > 10000 {
+        error("Thumbnail height must be at most 10000");
     }
 
     let input_filename = matches.value_of("input file").unwrap();
