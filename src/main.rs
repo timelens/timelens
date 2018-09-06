@@ -49,7 +49,7 @@ fn main() {
 
     if let Some(ref timeline_filename) = config.timeline_filename {
         // Write resulting timeline to a file
-        timeline.write_to(&timeline_filename);
+        timeline.write_to(&timeline_filename, 90);
         println!("-> timeline witten to '{}'", timeline_filename);
     }
 
@@ -62,7 +62,7 @@ fn main() {
         for (i, grid) in thumbnail_grids.iter().enumerate() {
             // Write resulting thumbnails to a file
             let grid_filename = grid_filename(i, &config);
-            grid.write_to(&grid_filename);
+            grid.write_to(&grid_filename, 40);
             print!(" '{}'", grid_filename);
         }
         println!();
