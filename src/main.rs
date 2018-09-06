@@ -270,7 +270,7 @@ fn parse_config() -> Config {
         }
         Some(String::from(matches.value_of("timeline").unwrap()))
     } else if !matches.is_present("thumbnails") {
-        Some(format!("{}.timelens.jpg", &input_filename))
+        Some(format!("{}.timeline.jpg", &input_filename))
     } else {
         None
     };
