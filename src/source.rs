@@ -183,7 +183,7 @@ fn get_meta(filename: &str) -> Result<(f32, f32), String> {
     // Set pipeline state to "paused" to start pad negotiation
     match pipeline.set_state(gst::State::Paused).into_result() {
         Ok(_) => (),
-        Err(err) => {
+        Err(_) => {
             return Err(String::from("Input file could not be opened"));
         }
     }
