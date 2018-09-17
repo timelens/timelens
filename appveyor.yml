@@ -1,0 +1,86 @@
+cache:
+  - c:\cargo\registry
+  - c:\cargo\git
+
+init:
+  - mkdir c:\cargo
+  - mkdir c:\rustup
+  - SET PATH=c:\cargo\bin;%PATH%
+
+clone_folder: c:\projects\timelens
+
+environment:
+  CARGO_HOME: "c:\\cargo"
+  RUSTUP_HOME: "c:\\rustup"
+  CARGO_TARGET_DIR: "c:\\projects\\timelens\\target"
+  global:
+    PROJECT_NAME: timelens
+    RUST_BACKTRACE: full
+  matrix:
+    - TARGET: x86_64-pc-windows-gnu
+      CHANNEL: stable
+      BITS: 64
+      MSYS2: 1
+    #- TARGET: x86_64-pc-windows-msvc
+    #  CHANNEL: stable
+    #  BITS: 64
+    #- TARGET: i686-pc-windows-gnu
+    #  CHANNEL: stable
+    #  BITS: 32
+    #  MSYS2: 1
+    #- TARGET: i686-pc-windows-msvc
+    #  CHANNEL: stable
+    #  BITS: 32
+
+matrix:
+  fast_finish: true
+
+# Install Rust and Cargo
+# (Based on from https://github.com/rust-lang/libc/blob/master/appveyor.yml)
+install:
+  - appveyor-retry choco install pkgconfiglite
+  - appveyor-retry appveyor DownloadFile https://gstreamer.freedesktop.org/data/pkg/windows/1.14.1/gstreamer-1.0-devel-x86_64-1.14.1.msi
+  - appveyor-retry appveyor DownloadFile https://gstreamer.freedesktop.org/data/pkg/windows/1.14.1/gstreamer-1.0-x86_64-1.14.1.msi
+  - msiexec /i gstreamer-1.0-devel-x86_64-1.14.1.msi /quiet /qn /norestart /log install-devel.log
+  - msiexec /i gstreamer-1.0-x86_64-1.14.1.msi /quiet /qn /norestart /log install.log
+  - curl -sSf -o rustup-init.exe https://win.rustup.rs/
+  - rustup-init.exe -y --default-host %TARGET%
+  - set PATH=%PATH%;C:\Users\appveyor\.cargo\bin
+  - if defined MSYS2 set PATH=C:\msys64\mingw%BITS%\bin;%PATH%
+  - set PKG_CONFIG_PATH=%PKG_CONFIG_PATH%;C:\gstreamer\1.0\x86_64\lib\pkgconfig
+  - rustc -V
+  - cargo -V
+
+# Hack to work around a harmless warning in Appveyor builds?
+build: false
+
+## Equivalent to Travis' `script` phase
+#test_script:
+#  - cargo test --verbose --all
+
+before_deploy:
+  # Generate artifacts for release
+  - cargo build --release
+  - mkdir staging
+  - copy target\release\timelens.exe staging
+  - cd staging
+  # release zipfile will look like 'timelens-1.2.3-x86_64-pc-windows-msvc'
+  - 7z a ../%PROJECT_NAME%-%APPVEYOR_REPO_TAG_NAME%-%TARGET%.zip *
+  - appveyor PushArtifact ../%PROJECT_NAME%-%APPVEYOR_REPO_TAG_NAME%-%TARGET%.zip
+
+deploy:
+  description: 'Automatically deployed release'
+  # All the zipped artifacts will be deployed
+  artifact: /.*\.zip/
+  auth_token:
+    secure: hBmCgWJ3X7PK4l3ucrlbqXvrCIPf9fBAEsePSdgMxm9CJxHOnMBmRROfgnB3Nkj7
+  provider: GitHub
+  # deploy when a new tag is pushed and only on the stable channel
+  on:
+    CHANNEL: stable
+    appveyor_repo_tag: true
+
+branches:
+  only:
+    - /\d+\.\d+\.\d+/
+    - master
