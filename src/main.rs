@@ -290,7 +290,8 @@ fn parse_config() -> Config {
         if path.extension().is_none()
             || path
                 .extension()
-                .expect("Could not get extension from timeline argument") != "jpg"
+                .expect("Could not get extension from timeline argument")
+                != "jpg"
         {
             error("You must specify a .jpg file as an output for `--timeline`.");
         }
@@ -314,7 +315,8 @@ fn parse_config() -> Config {
         if path.extension().is_none()
             || path
                 .extension()
-                .expect("Could not get extension from thumbnails argument") != "vtt"
+                .expect("Could not get extension from thumbnails argument")
+                != "vtt"
         {
             error("You must specify a .vtt file as an output for `--thumbnails`.");
         }
@@ -500,7 +502,8 @@ fn check_for_collision(existing: &str, new_opt: &Option<String>) {
     if let Some(new) = new_opt {
         let e = PathBuf::from(existing);
         let n = PathBuf::from(new);
-        if e.exists() && n.exists()
+        if e.exists()
+            && n.exists()
             && fs::canonicalize(&e).expect("Could not canonicalize existing path")
                 == fs::canonicalize(&n).expect("Could not canonicalize new path")
         {
