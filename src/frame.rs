@@ -2,6 +2,7 @@ extern crate gstreamer as gst;
 extern crate gstreamer_app as gst_app;
 
 use frame::gst::prelude::*;
+use std::fs::File;
 
 // Holds a GStreamer Buffer, and knows its size and (optionally) its presentation timestamp in
 // seconds
@@ -266,7 +267,19 @@ impl Frame {
     }
 
     // Write frame to `filename` as a JPEG using GStreamer
-    pub fn write_to(&self, filename: &str, quality: i32) {
+    pub fn write_to(&self, filename: &str, quality: i32) -> Result<bool, String> {
+        {
+            match File::create(&filename) {
+                Ok(file) => file,
+                Err(e) => {
+                    return Err(String::from(format!(
+                        "Could not create '{}': {})",
+                        &filename, e
+                    )));
+                }
+            };
+        }
+
         let src =
             gst::ElementFactory::make("appsrc", None).expect("Could not create appsrc for writing");
 
@@ -348,5 +361,7 @@ impl Frame {
             .set_state(gst::State::Null)
             .into_result()
             .expect("Could not stop writing pipeline");
+
+        return Ok(true);
     }
 }

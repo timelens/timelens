@@ -49,8 +49,14 @@ fn main() {
 
     if let Some(ref timeline_filename) = config.timeline_filename {
         // Write resulting timeline to a file
-        timeline.write_to(&timeline_filename, 90);
-        println!("-> timeline witten to '{}'", timeline_filename);
+        match timeline.write_to(&timeline_filename, 90) {
+            Ok(_) => {
+                println!("-> timeline witten to '{}'", timeline_filename);
+            }
+            Err(description) => {
+                error(&description);
+            }
+        }
     }
 
     if let Some(ref vtt_filename) = config.vtt_filename {
@@ -62,8 +68,14 @@ fn main() {
         for (i, grid) in thumbnail_grids.iter().enumerate() {
             // Write resulting thumbnails to a file
             let grid_filename = grid_filename(i, &config);
-            grid.write_to(&grid_filename, 40);
-            print!(" '{}'", grid_filename);
+            match grid.write_to(&grid_filename, 40) {
+                Ok(_) => {
+                    print!(" '{}'", grid_filename);
+                }
+                Err(description) => {
+                    error(&description);
+                }
+            }
         }
         println!();
     }
