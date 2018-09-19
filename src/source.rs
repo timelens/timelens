@@ -32,7 +32,7 @@ impl VideoSource {
     // output approximately `n` frames.
     pub fn new(filename: &str, output_height: usize, n: usize) -> Result<VideoSource, String> {
         // Initialize GStreamer
-        gst::init().unwrap();
+        gst::init().expect("Could not initialize GStreamer");
 
         // Get size and duration information
         let (aspect_ratio, duration) = get_meta(&filename)?;
@@ -48,7 +48,7 @@ impl VideoSource {
         pipeline
             .set_state(gst::State::Paused)
             .into_result()
-            .unwrap();
+            .expect("Could not pause input pipeline");
         pipeline.get_state(10 * gst::SECOND);
 
         let seek_mode = false;
@@ -58,7 +58,7 @@ impl VideoSource {
             pipeline
                 .set_state(gst::State::Playing)
                 .into_result()
-                .unwrap();
+                .expect("Could not start input pipeline");
         }
 
         // Approximate which FPS value is required to output n frames in total
@@ -78,7 +78,7 @@ impl VideoSource {
                     ],
                 ),
             )
-            .unwrap();
+            .expect("Could not set properties on input capsfilter");
 
         // Return the new VideoSource
         Ok(VideoSource {
@@ -106,19 +106,26 @@ impl Iterator for VideoSource {
                     gst::SeekFlags::FLUSH, // | gst::SeekFlags::KEY_UNIT,
                     (j as u64) * gst::NSECOND,
                 )
-                .unwrap();
+                .expect("Could not seek");
         }
 
         match self.appsink.pull_sample() {
             Some(sample) => {
                 self.next_column += 1;
                 Some(frame::Frame {
-                    buffer: sample.get_buffer().unwrap(),
+                    buffer: sample
+                        .get_buffer()
+                        .expect("Could not get buffer from input pipeline"),
                     width: self.width,
                     height: self.height,
                     pts: Some(
-                        sample.get_buffer().unwrap().get_pts().nseconds().unwrap() as f32
-                            / 1_000_000_000.0,
+                        sample
+                            .get_buffer()
+                            .expect("Could not get buffer from input pipeline, again")
+                            .get_pts()
+                            .nseconds()
+                            .expect("Could not convert PTS to nanoseconds in input pipeline")
+                            as f32 / 1_000_000_000.0,
                     ),
                 })
             }
@@ -127,7 +134,7 @@ impl Iterator for VideoSource {
                 self.pipeline
                     .set_state(gst::State::Null)
                     .into_result()
-                    .unwrap();
+                    .expect("Could not stop input pipeline");
 
                 None
             }
@@ -163,22 +170,33 @@ fn get_meta(filename: &str) -> Result<(f32, f32), String> {
             )));
         }
     };
-    let absolute = absolute.to_str().unwrap();
+    let absolute = absolute
+        .to_str()
+        .expect("Could not convert absolut path to str");
     let uri = format!("file://{}", absolute);
 
     // Set up a playbin element, which automatically select decoders
-    let playbin = gst::ElementFactory::make("playbin", None).unwrap();
-    playbin.set_property("uri", &uri).unwrap();
+    let playbin = gst::ElementFactory::make("playbin", None).expect("Could not create playbin");
+    playbin
+        .set_property("uri", &uri)
+        .expect("Could not set property on playbin");
 
     // We don't actually want any output, so we connect the playbin to fakesinks
-    let fakesink = gst::ElementFactory::make("fakesink", None).unwrap();
-    let fakesink2 = gst::ElementFactory::make("fakesink", None).unwrap();
-    playbin.set_property("video-sink", &fakesink).unwrap();
-    playbin.set_property("audio-sink", &fakesink2).unwrap();
+    let fakesink = gst::ElementFactory::make("fakesink", None).expect("Could not create fakesink");
+    let fakesink2 =
+        gst::ElementFactory::make("fakesink", None).expect("Could not create fakesink 2");
+    playbin
+        .set_property("video-sink", &fakesink)
+        .expect("Could not set property on fakesink");
+    playbin
+        .set_property("audio-sink", &fakesink2)
+        .expect("Could not set property on fakesink 2");
 
     // Create a pipeline and add the playbin to it
     let pipeline = gst::Pipeline::new(None);
-    pipeline.add(&playbin).unwrap();
+    pipeline
+        .add(&playbin)
+        .expect("Could not add playbin to pipeline");
 
     // Set pipeline state to "paused" to start pad negotiation
     match pipeline.set_state(gst::State::Paused).into_result() {
@@ -190,7 +208,10 @@ fn get_meta(filename: &str) -> Result<(f32, f32), String> {
     pipeline.get_state(10 * gst::SECOND);
 
     // Get the sinkpad of the first video stream
-    let pad = playbin.emit("get-video-pad", &[&0]).unwrap().unwrap();
+    let pad = playbin
+        .emit("get-video-pad", &[&0])
+        .expect("Could not get video pad")
+        .expect("Could not get video pad, part 2");
 
     let pad = if let Some(pad) = pad.get::<gst::Pad>() {
         pad
@@ -199,41 +220,48 @@ fn get_meta(filename: &str) -> Result<(f32, f32), String> {
     };
 
     // And retrieve width and height from its caps
-    let caps = pad.get_current_caps().unwrap();
+    let caps = pad.get_current_caps().expect("Could not get current caps");
     let width = caps
         .get_structure(0)
-        .unwrap()
+        .expect("Could not get structure from caps width")
         .get_value("width")
-        .unwrap()
+        .expect("Could not get width from caps")
         .get::<i32>()
-        .unwrap() as usize;
+        .expect("Could not convert width to i32") as usize;
     let height = caps
         .get_structure(0)
-        .unwrap()
+        .expect("Could not get structure from caps height")
         .get_value("height")
-        .unwrap()
+        .expect("Could not get height from caps")
         .get::<i32>()
-        .unwrap() as usize;
+        .expect("Could not convert height to i32") as usize;
 
     // Pixels aren't necessarily square, so we need to get their aspect ratio to calculate the
     // aspect ratio of the video
     let pixel_aspect_ratio = caps
         .get_structure(0)
-        .unwrap()
+        .expect("Could not get structure from caps aspect ratio")
         .get_value("pixel-aspect-ratio")
-        .unwrap()
+        .expect("Could not get aspect ratio from caps")
         .get::<gst::Fraction>()
-        .unwrap();
+        .expect("Could not convert aspect ratio to fraction");
     let aspect_ratio = width as f32 * *pixel_aspect_ratio.numer() as f32
         / height as f32
         / *pixel_aspect_ratio.denom() as f32;
 
     // Also, query the pipeline for the duration and convert to seconds
-    let duration_clocktime: gst::ClockTime = pipeline.query_duration().unwrap();
-    let duration = duration_clocktime.nseconds().unwrap() as f32 / 1_000_000_000.0;
+    let duration_clocktime: gst::ClockTime =
+        pipeline.query_duration().expect("Could not query duration");
+    let duration = duration_clocktime
+        .nseconds()
+        .expect("Could not convert duration to nanoseconds") as f32
+        / 1_000_000_000.0;
 
     // Stop the pipeline again
-    pipeline.set_state(gst::State::Null).into_result().unwrap();
+    pipeline
+        .set_state(gst::State::Null)
+        .into_result()
+        .expect("Could not stop querying pipeline");
 
     Ok((aspect_ratio, duration))
 }
@@ -248,25 +276,33 @@ fn build_pipeline(
     let uri = format!(
         "file://{}",
         fs::canonicalize(&PathBuf::from(filename))
-            .unwrap()
+            .expect("Could not canonicalize input filename")
             .to_str()
-            .unwrap()
+            .expect("Could not convert canonicalized input filename to str")
     );
 
-    let src = gst::ElementFactory::make("uridecodebin", None).unwrap();
-    src.set_property("uri", &uri).unwrap();
+    let src =
+        gst::ElementFactory::make("uridecodebin", None).expect("Could not create uridecodebin");
+    src.set_property("uri", &uri)
+        .expect("Could not set property on uridecodebin");
 
-    let videoconvert = gst::ElementFactory::make("videoconvert", None).unwrap();
-    let videorate = gst::ElementFactory::make("videorate", None).unwrap();
-    let videoscale = gst::ElementFactory::make("videoscale", None).unwrap();
+    let videoconvert =
+        gst::ElementFactory::make("videoconvert", None).expect("Could not create videoconvert");
+    let videorate =
+        gst::ElementFactory::make("videorate", None).expect("Could not convert videorate");
+    let videoscale =
+        gst::ElementFactory::make("videoscale", None).expect("Could not convert videoscale");
     // Scale frames exactly to the desired size, don't add borders
-    videoscale.set_property("add-borders", &false).unwrap();
+    videoscale
+        .set_property("add-borders", &false)
+        .expect("Could not set videoscape property");
     // Use Sinc scaling algorithm, which produces better results when downsampling
     videoscale.set_property_from_str("method", "sinc");
 
     let method = String::from("sinc");
 
-    let capsfilter = gst::ElementFactory::make("capsfilter", method.as_str()).unwrap();
+    let capsfilter = gst::ElementFactory::make("capsfilter", method.as_str())
+        .expect("Could not create input capsfilter");
     capsfilter
         .set_property(
             "caps",
@@ -280,9 +316,9 @@ fn build_pipeline(
                 ],
             ),
         )
-        .unwrap();
+        .expect("Could not set properties on input capsfilter");
 
-    let sink = gst::ElementFactory::make("appsink", None).unwrap();
+    let sink = gst::ElementFactory::make("appsink", None).expect("Could not create input appsink");
 
     let pipeline = gst::Pipeline::new(None);
 
@@ -295,16 +331,19 @@ fn build_pipeline(
             &capsfilter,
             &sink,
         ])
-        .unwrap();
+        .expect("Could not add elements to input pipeline");
 
-    gst::Element::link_many(&[&videoconvert, &videorate, &videoscale, &capsfilter, &sink]).unwrap();
+    gst::Element::link_many(&[&videoconvert, &videorate, &videoscale, &capsfilter, &sink])
+        .expect("Could not link input pipeline");
 
     let appsink = sink
         .clone()
         .dynamic_cast::<gst_app::AppSink>()
         .expect("Sink element is expected to be an appsink!");
     // Go as fast as possible :)
-    appsink.set_property("sync", &false).unwrap();
+    appsink
+        .set_property("sync", &false)
+        .expect("Could not set property on input appsink");
 
     // When a new source pad opens on the decodebin, connect it to the videoconvert element.
     // this code is required because media files might contain no (or many) video strems, this is

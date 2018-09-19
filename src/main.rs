@@ -199,7 +199,9 @@ fn parse_config() -> Config {
     let mut height: Option<usize> = None;
 
     if matches.is_present("width") {
-        let width_string = matches.value_of("width").unwrap();
+        let width_string = matches
+            .value_of("width")
+            .expect("Could not get width from command line parser");
 
         width = if let Ok(width) = width_string.parse() {
             Some(width)
@@ -209,7 +211,9 @@ fn parse_config() -> Config {
     }
 
     if matches.is_present("height") {
-        let height_string = matches.value_of("height").unwrap();
+        let height_string = matches
+            .value_of("height")
+            .expect("Could not get height from command line parser");
 
         height = if let Ok(height) = height_string.parse() {
             Some(height)
@@ -222,24 +226,24 @@ fn parse_config() -> Config {
         if width.is_none() {
             width = Some(1000);
         }
-        height = Some(width.unwrap() / 10);
+        height = Some(width.expect("Could not read default width") / 10);
     } else if width.is_none() {
-        width = Some(height.unwrap() * 10);
+        width = Some(height.expect("Could not read default height") * 10);
     }
 
-    if width.unwrap() < 16 {
+    if width.expect("Could not read width") < 16 {
         error("Timeline width must be at least 16");
     }
 
-    if height.unwrap() < 16 {
+    if height.expect("Could not read height") < 16 {
         error("Timeline height must be at least 16");
     }
 
-    if width.unwrap() > 10000 {
+    if width.expect("Could not read width, again") > 10000 {
         error("Timeline width must be at most 10000");
     }
 
-    if height.unwrap() > 10000 {
+    if height.expect("Could not read height, again") > 10000 {
         error("Timeline height must be at most 10000");
     }
 
@@ -259,16 +263,28 @@ fn parse_config() -> Config {
         error("Thumbnail height must be at most 10000");
     }
 
-    let input_filename = matches.value_of("input file").unwrap();
+    let input_filename = matches
+        .value_of("input file")
+        .expect("Could not get input file from command line parser");
 
     // Set timeline filename
     let timeline_filename = if matches.is_present("timeline") {
-        let arg = String::from(matches.value_of("timeline").unwrap());
+        let arg = String::from(
+            matches
+                .value_of("timeline")
+                .expect("Could not get timeline option from command line parser"),
+        );
         let path = PathBuf::from(&arg);
-        if path.extension().is_none() || path.extension().unwrap() != "jpg" {
+        if path.extension().is_none()
+            || path
+                .extension()
+                .expect("Could not get extension from timeline argument") != "jpg"
+        {
             error("You must specify a .jpg file as an output for `--timeline`.");
         }
-        Some(String::from(matches.value_of("timeline").unwrap()))
+        Some(String::from(matches.value_of("timeline").expect(
+            "Could not get timeline option from command line parser, again",
+        )))
     } else if !matches.is_present("thumbnails") {
         Some(format!("{}.timeline.jpg", &input_filename))
     } else {
@@ -277,9 +293,17 @@ fn parse_config() -> Config {
 
     // Set thumbnail-related filenames
     let vtt_filename = if matches.is_present("thumbnails") {
-        let arg = String::from(matches.value_of("thumbnails").unwrap());
+        let arg = String::from(
+            matches
+                .value_of("thumbnails")
+                .expect("Could not get thumbnails option from command line parser"),
+        );
         let path = PathBuf::from(&arg);
-        if path.extension().is_none() || path.extension().unwrap() != "vtt" {
+        if path.extension().is_none()
+            || path
+                .extension()
+                .expect("Could not get extension from thumbnails argument") != "vtt"
+        {
             error("You must specify a .vtt file as an output for `--thumbnails`.");
         }
         Some(arg)
@@ -291,8 +315,8 @@ fn parse_config() -> Config {
     check_for_collision(&input_filename, &vtt_filename);
 
     Config {
-        width: width.unwrap(),
-        height: height.unwrap(),
+        width: width.expect("Could not read width, part 3"),
+        height: height.expect("Could not read height, part 3"),
 
         thumbnail_width: 0,
         thumbnail_height: thumbnail_height,
@@ -343,7 +367,9 @@ fn generate_timeline_and_thumbnails(
     for frame in source {
         // Calculate which column this frame belongs to
         let i = cmp::min(
-            (config.width as f32 * (frame.pts.unwrap() / duration as f32)) as usize,
+            (config.width as f32
+                * (frame.pts.expect("Could not get PTS from source frame") / duration as f32))
+                as usize,
             config.width - 1,
         );
 
@@ -384,7 +410,7 @@ fn generate_timeline_and_thumbnails(
             );
         }
 
-        stdout().flush().unwrap();
+        stdout().flush().expect("Could not flush stdout");
     }
 
     (timeline, grids)
@@ -402,7 +428,10 @@ fn timestamp(mseconds_total: i32) -> String {
 fn write_vtt(config: &Config, duration: f32) {
     let mseconds = (duration * 1_000.0) as i32;
 
-    let vtt_filename = config.vtt_filename.clone().unwrap();
+    let vtt_filename = config
+        .vtt_filename
+        .clone()
+        .expect("Could not clone VTT filename");
 
     let mut f = match File::create(&vtt_filename) {
         Ok(file) => file,
@@ -431,9 +460,9 @@ fn write_vtt(config: &Config, duration: f32) {
 
         let filename = Path::new(&grid_filename)
             .file_name()
-            .unwrap()
+            .expect("Could not get file name for grid")
             .to_str()
-            .unwrap();
+            .expect("Could not convert grid filename to str");
 
         write!(
             &mut f,
@@ -445,7 +474,7 @@ fn write_vtt(config: &Config, duration: f32) {
             y,
             w,
             h
-        ).unwrap();
+        ).expect("Could not write to VTT file");
     }
 }
 
@@ -454,9 +483,9 @@ fn check_for_collision(existing: &str, new_opt: &Option<String>) {
     if let Some(new) = new_opt {
         let e = PathBuf::from(existing);
         let n = PathBuf::from(new);
-        if e.exists()
-            && n.exists()
-            && fs::canonicalize(&e).unwrap() == fs::canonicalize(&n).unwrap()
+        if e.exists() && n.exists()
+            && fs::canonicalize(&e).expect("Could not canonicalize existing path")
+                == fs::canonicalize(&n).expect("Could not canonicalize new path")
         {
             error(&format!("Refusing to overwrite '{}'", existing));
         }
@@ -483,7 +512,10 @@ fn grid_position(i: usize, config: &Config) -> (usize, usize, usize) {
 
 // Returns the filename of the i-th thumbnail grid.
 fn grid_filename(i: usize, config: &Config) -> String {
-    let vtt_filename = config.vtt_filename.clone().unwrap();
+    let vtt_filename = config
+        .vtt_filename
+        .clone()
+        .expect("Could not clone VTT filename, again");
     let stem = &vtt_filename[..vtt_filename.len() - 4];
     format!("{}-{:02}.jpg", stem, i)
 }

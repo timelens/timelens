@@ -15,7 +15,7 @@ pub struct Frame {
 impl Frame {
     // Initialize a new empty frame of size width*height
     pub fn new(width: usize, height: usize) -> Frame {
-        let buffer = gst::Buffer::with_size(width * height * 4).unwrap();
+        let buffer = gst::Buffer::with_size(width * height * 4).expect("Could not create buffer");
         Frame {
             buffer,
             width,
@@ -31,10 +31,18 @@ impl Frame {
             let mut frame = Frame::new(1, self.height);
 
             {
-                let buffer = frame.buffer.get_mut().unwrap();
-                let mut data = buffer.map_writable().unwrap();
+                let buffer = frame
+                    .buffer
+                    .get_mut()
+                    .expect("Could not get mutable buffer");
+                let mut data = buffer
+                    .map_writable()
+                    .expect("Could not get writable map of buffer");
 
-                let map = self.buffer.map_readable().unwrap();
+                let map = self
+                    .buffer
+                    .map_readable()
+                    .expect("Could not get readable map of buffer");
                 let indata = map.as_slice();
 
                 for y in 0..self.height {
@@ -63,10 +71,18 @@ impl Frame {
             let mut frame2 = Frame::new(width, height);
 
             {
-                let buffer = frame2.buffer.get_mut().unwrap();
-                let mut data = buffer.map_writable().unwrap();
+                let buffer = frame2
+                    .buffer
+                    .get_mut()
+                    .expect("Could not get mutable buffer, part two");
+                let mut data = buffer
+                    .map_writable()
+                    .expect("Could not get writable map of buffer, part two");
 
-                let map = frame.buffer.map_readable().unwrap();
+                let map = frame
+                    .buffer
+                    .map_readable()
+                    .expect("Could not get readable map of buffer, part two");
                 let indata = map.as_slice();
 
                 let factor = frame.height as f32 / height as f32;
@@ -102,9 +118,11 @@ impl Frame {
 
             frame2
         } else {
-            let src = gst::ElementFactory::make("appsrc", None).unwrap();
+            let src = gst::ElementFactory::make("appsrc", None)
+                .expect("Could not create appsrc for scaling pipeline");
 
-            let capsfilter = gst::ElementFactory::make("capsfilter", None).unwrap();
+            let capsfilter = gst::ElementFactory::make("capsfilter", None)
+                .expect("Could not create capsfilter for scaling pipeline");
             capsfilter
                 .set_property(
                     "caps",
@@ -118,15 +136,19 @@ impl Frame {
                         ],
                     ),
                 )
-                .unwrap();
+                .expect("Could not set capsfilter properties for scaling pipeline");
 
-            let videoscale = gst::ElementFactory::make("videoscale", None).unwrap();
+            let videoscale = gst::ElementFactory::make("videoscale", None)
+                .expect("Could not create videoscale for scaling pipeline");
             // Scale frames exactly to the desired size, don't add borders
-            videoscale.set_property("add-borders", &false).unwrap();
+            videoscale
+                .set_property("add-borders", &false)
+                .expect("Could not set videoscale property for scaling pipeline");
             // Use Sinc scaling algorithm, which produces better results when downsampling
             videoscale.set_property_from_str("method", "sinc");
 
-            let capsfilter2 = gst::ElementFactory::make("capsfilter", None).unwrap();
+            let capsfilter2 = gst::ElementFactory::make("capsfilter", None)
+                .expect("Could not create capsfilter 2 for scaling pipeline");
             capsfilter2
                 .set_property(
                     "caps",
@@ -140,15 +162,16 @@ impl Frame {
                         ],
                     ),
                 )
-                .unwrap();
-            let sink = gst::ElementFactory::make("appsink", None).unwrap();
+                .expect("Could not set capsfilter 2 properties for scaling pipeline");
+            let sink = gst::ElementFactory::make("appsink", None)
+                .expect("Could not create appsink for scaling pipeline");
 
             let pipeline = gst::Pipeline::new(None);
             pipeline
                 .add_many(&[&src, &capsfilter, &videoscale, &capsfilter2, &sink])
-                .unwrap();
+                .expect("Could not create scaling pipeline");
             gst::Element::link_many(&[&src, &capsfilter, &videoscale, &capsfilter2, &sink])
-                .unwrap();
+                .expect("Could not link scaling pipeline");
 
             let appsrc = src
                 .clone()
@@ -162,30 +185,51 @@ impl Frame {
                 .dynamic_cast::<gst_app::AppSink>()
                 .expect("Sink element is expected to be an appsink!");
             // Go as fast as possible :)
-            appsink.set_property("sync", &false).unwrap();
+            appsink
+                .set_property("sync", &false)
+                .expect("Could not set set appsink property for scaling pipeline");
 
             pipeline
                 .set_state(gst::State::Playing)
                 .into_result()
-                .unwrap();
+                .expect("Could not start scaling pipeline");
 
             appsrc
-                .push_buffer(self.buffer.copy_deep().unwrap())
+                .push_buffer(
+                    self.buffer
+                        .copy_deep()
+                        .expect("Could not deep copy buffer in scaling pipeline"),
+                )
                 .into_result()
-                .unwrap();
+                .expect("Could not make push_buffer into result");
 
-            appsrc.end_of_stream().into_result().unwrap();
+            appsrc
+                .end_of_stream()
+                .into_result()
+                .expect("Could not make EOS into result");
 
-            let sample = appsink.pull_sample().unwrap();
+            let sample = appsink
+                .pull_sample()
+                .expect("Could not pull sample in scaling pipeline");
 
-            pipeline.set_state(gst::State::Null).into_result().unwrap();
+            pipeline
+                .set_state(gst::State::Null)
+                .into_result()
+                .expect("Could not stop scaling pipeline");
 
             Frame {
-                buffer: sample.get_buffer().unwrap(),
+                buffer: sample
+                    .get_buffer()
+                    .expect("Could not get buffer from sample in scaling pipeline"),
                 width: width,
                 height: height,
                 pts: Some(
-                    sample.get_buffer().unwrap().get_pts().nseconds().unwrap() as f32
+                    sample
+                        .get_buffer()
+                        .expect("Could not get buffer from sample in scaling pipeline, part two")
+                        .get_pts()
+                        .nseconds()
+                        .expect("Could not convert PTS to nanoseconds") as f32
                         / 1_000_000_000.0,
                 ),
             }
@@ -194,9 +238,17 @@ impl Frame {
 
     // Copy the `other` frame into `self`, with the top left at dx/dy
     pub fn copy(&mut self, other: &Frame, dx: usize, dy: usize) {
-        let mut data = self.buffer.get_mut().unwrap().map_writable().unwrap();
+        let mut data = self
+            .buffer
+            .get_mut()
+            .expect("Could not get mutable buffer for copying")
+            .map_writable()
+            .expect("Could not get writable map for copying");
 
-        let map = other.buffer.map_readable().unwrap();
+        let map = other
+            .buffer
+            .map_readable()
+            .expect("Could not get readable map for copying");
         let indata = map.as_slice();
 
         for x in 0..other.width {
@@ -215,9 +267,11 @@ impl Frame {
 
     // Write frame to `filename` as a JPEG using GStreamer
     pub fn write_to(&self, filename: &str, quality: i32) {
-        let src = gst::ElementFactory::make("appsrc", None).unwrap();
+        let src =
+            gst::ElementFactory::make("appsrc", None).expect("Could not create appsrc for writing");
 
-        let capsfilter = gst::ElementFactory::make("capsfilter", None).unwrap();
+        let capsfilter = gst::ElementFactory::make("capsfilter", None)
+            .expect("Could not create capsfilter for writing");
         capsfilter
             .set_property(
                 "caps",
@@ -231,18 +285,24 @@ impl Frame {
                     ],
                 ),
             )
-            .unwrap();
+            .expect("Could not set properties on capsfilter for writing");
 
-        let jpegenc = gst::ElementFactory::make("jpegenc", None).unwrap();
-        jpegenc.set_property("quality", &quality).unwrap();
-        let filesink = gst::ElementFactory::make("filesink", None).unwrap();
-        filesink.set_property("location", &filename).unwrap();
+        let jpegenc = gst::ElementFactory::make("jpegenc", None).expect("Could not create jpegenc");
+        jpegenc
+            .set_property("quality", &quality)
+            .expect("Could not create quality element");
+        let filesink =
+            gst::ElementFactory::make("filesink", None).expect("Could not create filesink");
+        filesink
+            .set_property("location", &filename)
+            .expect("Could not set property on filesink");
 
         let pipeline = gst::Pipeline::new(None);
         pipeline
             .add_many(&[&src, &capsfilter, &jpegenc, &filesink])
-            .unwrap();
-        gst::Element::link_many(&[&src, &capsfilter, &jpegenc, &filesink]).unwrap();
+            .expect("Could not create writing pipeline");
+        gst::Element::link_many(&[&src, &capsfilter, &jpegenc, &filesink])
+            .expect("Could not link writing pipeline");
 
         let appsrc = src
             .clone()
@@ -254,16 +314,23 @@ impl Frame {
         pipeline
             .set_state(gst::State::Playing)
             .into_result()
-            .unwrap();
+            .expect("Could not start writing pipeline");
 
         appsrc
-            .push_buffer(self.buffer.copy_deep().unwrap())
+            .push_buffer(
+                self.buffer
+                    .copy_deep()
+                    .expect("Could not deep copy buffer for writing"),
+            )
             .into_result()
-            .unwrap();
+            .expect("Could not get result from deep copy for writing");
 
-        appsrc.end_of_stream().into_result().unwrap();
+        appsrc
+            .end_of_stream()
+            .into_result()
+            .expect("Could not make EOS into result for writing");
 
-        let bus = pipeline.get_bus().unwrap();
+        let bus = pipeline.get_bus().expect("Could not get bus for writing");
 
         loop {
             match bus.timed_pop(gst::CLOCK_TIME_NONE) {
@@ -277,6 +344,9 @@ impl Frame {
             }
         }
 
-        pipeline.set_state(gst::State::Null).into_result().unwrap();
+        pipeline
+            .set_state(gst::State::Null)
+            .into_result()
+            .expect("Could not stop writing pipeline");
     }
 }
