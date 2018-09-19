@@ -427,6 +427,18 @@ fn generate_timeline_and_thumbnails(
         stdout().flush().expect("Could not flush stdout");
     }
 
+    let elapsed = start_time.elapsed().unwrap_or(Duration::new(0, 0));
+    let total_seconds = elapsed.as_secs() as f32 + elapsed.subsec_millis() as f32 / 1000.0;
+    let elapsed_minutes = total_seconds as usize / 60;
+    let elapsed_seconds = total_seconds as usize % 60;
+
+    print!(
+        "\rtimelens: {:.1}% (total time: {}:{:02})",
+        100.0, elapsed_minutes, elapsed_seconds
+    );
+
+    stdout().flush().expect("Could not flush stdout");
+
     (timeline, grids)
 }
 
