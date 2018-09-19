@@ -418,10 +418,15 @@ fn generate_timeline_and_thumbnails(
 
 // Convert milliseconds to a WebVTT timestamp (which has the format "(HH:)MM:SS.mmmm")
 fn timestamp(mseconds_total: i32) -> String {
-    let minutes = mseconds_total / (1000 * 60);
-    let seconds = (mseconds_total - 1000 * 60 * minutes) / 1000;
-    let mseconds = mseconds_total - 1000 * (seconds + 60 * minutes);
-    format!("{:02}:{:02}.{:03}", minutes, seconds, mseconds)
+    let hours = mseconds_total / (1000 * 60 * 60);
+    let minutes = (mseconds_total - 1000 * 60 * 60 * hours) / (1000 * 60);
+    let seconds = (mseconds_total - 1000 * 60 * (minutes + 60 * hours)) / 1000;
+    let mseconds = mseconds_total - 1000 * (seconds + 60 * (minutes + 60 * hours));
+    if hours > 0 {
+        format!("{}:{:02}:{:02}.{:03}", hours, minutes, seconds, mseconds)
+    } else {
+        format!("{:02}:{:02}.{:03}", minutes, seconds, mseconds)
+    }
 }
 
 // Write a WebVTT file pointing to the thumbnail locations
@@ -518,4 +523,12 @@ fn grid_filename(i: usize, config: &Config) -> String {
         .expect("Could not clone VTT filename, again");
     let stem = &vtt_filename[..vtt_filename.len() - 4];
     format!("{}-{:02}.jpg", stem, i)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn timestamp() {
+        assert_eq!(timestamp(13 + 60 * (30 + 60 * 2)), "2:30:13.000");
+    }
 }
