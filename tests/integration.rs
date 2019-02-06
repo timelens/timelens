@@ -7,8 +7,8 @@ extern crate predicates;
 mod integration {
     use assert_cmd::prelude::*;
     use assert_fs::prelude::*;
-    use gst;
-    use gst::prelude::*;
+    use crate::gst;
+    use crate::gst::prelude::*;
     use predicates::prelude::*;
     use std::env;
     use std::path::Path;

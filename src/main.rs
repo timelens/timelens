@@ -556,6 +556,7 @@ fn grid_filename(i: usize, config: &Config) -> String {
 mod tests {
     #[test]
     fn test_timestamp() {
+        use crate::timestamp;
         assert_eq!(timestamp((13 + 60 * (30 + 60 * 2))*1000), "2:30:13.000");
     }
 }

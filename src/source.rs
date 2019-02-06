@@ -1,8 +1,8 @@
 extern crate gstreamer as gst;
 extern crate gstreamer_app as gst_app;
 
-use frame;
-use source::gst::prelude::*;
+use crate::frame;
+use crate::source::gst::prelude::*;
 use std::fs;
 use std::path::PathBuf;
 

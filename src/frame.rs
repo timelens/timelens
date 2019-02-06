@@ -1,7 +1,7 @@
 extern crate gstreamer as gst;
 extern crate gstreamer_app as gst_app;
 
-use frame::gst::prelude::*;
+use crate::frame::gst::prelude::*;
 use std::fs::File;
 
 // Holds a GStreamer Buffer, and knows its size and (optionally) its presentation timestamp in

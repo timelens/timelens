@@ -2,6 +2,7 @@
 name = "timelens"
 version = "0.1.0"
 authors = ["Sebastian Morr <sebastian@morr.cc>"]
+edition = "2018"
 repository = "https://github.com/timelens/timelens"
 homepage = "https://timelens.io"
 license = "GPL-2.0-or-later"
