@@ -333,7 +333,7 @@ fn parse_config() -> Config {
         height: height.expect("Could not read height, part 3"),
 
         thumbnail_width: 0,
-        thumbnail_height: thumbnail_height,
+        thumbnail_height,
         thumbnail_columns: 0,
 
         input_filename: String::from(input_filename),

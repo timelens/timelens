@@ -30,7 +30,7 @@ impl VideoSource {
     //
     // Any frames this source outputs will be `output_height` pixels high. The source will try to
     // output approximately `n` frames.
-    pub fn new(filename: &str, output_height: usize, n: usize) -> Result<VideoSource, String> {
+    pub fn new(filename: &str, output_height: usize, n: usize) -> Result<Self, String> {
         // Initialize GStreamer
         gst::init().expect("Could not initialize GStreamer");
 
@@ -81,7 +81,7 @@ impl VideoSource {
             .expect("Could not set properties on input capsfilter");
 
         // Return the new VideoSource
-        Ok(VideoSource {
+        Ok(Self {
             width: output_width,
             height: output_height,
             duration,
@@ -149,26 +149,20 @@ fn get_meta(filename: &str) -> Result<(f32, f32), String> {
     let path = PathBuf::from(filename);
 
     if path.is_dir() {
-        return Err(String::from(format!(
+        return Err(format!(
             "Input argument '{}' is a directory. Please specify a file.",
             &filename
-        )));
+        ));
     }
 
     if !path.is_file() {
-        return Err(String::from(format!(
-            "Input file '{}' could not be found.",
-            &filename
-        )));
+        return Err(format!("Input file '{}' could not be found.", &filename));
     }
 
     let absolute = match fs::canonicalize(&path) {
         Ok(path) => path,
         Err(err) => {
-            return Err(String::from(format!(
-                "Input file could not be opened: {}",
-                &err
-            )));
+            return Err(format!("Input file could not be opened: {}", &err));
         }
     };
     let absolute = absolute
