@@ -20,15 +20,15 @@ Project homepage: https://timelens.io
 """
 
 [dependencies]
-gstreamer = "0.12.0"
-gstreamer-app = "0.12.0"
-colored = "1.6.1"
+gstreamer = "0.12.2"
+gstreamer-app = "0.12.2"
+colored = "1.7.0"
 
 [dependencies.clap]
 version = "2.32.0"
 features = ["wrap_help"]
 
 [dev-dependencies]
-assert_cmd = "0.9.1"
-predicates = "0.9.0"
-assert_fs = "0.9.0"
+assert_cmd = "0.11.0"
+predicates = "1.0.0"
+assert_fs = "0.11.3"
