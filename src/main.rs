@@ -555,7 +555,7 @@ fn grid_filename(i: usize, config: &Config) -> String {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn timestamp() {
-        assert_eq!(timestamp(13 + 60 * (30 + 60 * 2)), "2:30:13.000");
+    fn test_timestamp() {
+        assert_eq!(timestamp((13 + 60 * (30 + 60 * 2))*1000), "2:30:13.000");
     }
 }
