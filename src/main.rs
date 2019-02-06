@@ -505,7 +505,8 @@ fn write_vtt(config: &Config, duration: f32) {
             y,
             w,
             h
-        ).expect("Could not write to VTT file");
+        )
+        .expect("Could not write to VTT file");
     }
 }
 
@@ -557,6 +558,6 @@ mod tests {
     #[test]
     fn test_timestamp() {
         use crate::timestamp;
-        assert_eq!(timestamp((13 + 60 * (30 + 60 * 2))*1000), "2:30:13.000");
+        assert_eq!(timestamp((13 + 60 * (30 + 60 * 2)) * 1000), "2:30:13.000");
     }
 }

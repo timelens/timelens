@@ -136,7 +136,8 @@ impl Frame {
                             ("height", &(self.height as i32)),
                         ],
                     ),
-                ).expect("Could not set capsfilter properties for scaling pipeline");
+                )
+                .expect("Could not set capsfilter properties for scaling pipeline");
 
             let videoscale = gst::ElementFactory::make("videoscale", None)
                 .expect("Could not create videoscale for scaling pipeline");
@@ -161,7 +162,8 @@ impl Frame {
                             ("height", &(height as i32)),
                         ],
                     ),
-                ).expect("Could not set capsfilter 2 properties for scaling pipeline");
+                )
+                .expect("Could not set capsfilter 2 properties for scaling pipeline");
             let sink = gst::ElementFactory::make("appsink", None)
                 .expect("Could not create appsink for scaling pipeline");
 
@@ -198,7 +200,8 @@ impl Frame {
                     self.buffer
                         .copy_deep()
                         .expect("Could not deep copy buffer in scaling pipeline"),
-                ).into_result()
+                )
+                .into_result()
                 .expect("Could not make push_buffer into result");
 
             appsrc
@@ -294,7 +297,8 @@ impl Frame {
                         ("height", &(self.height as i32)),
                     ],
                 ),
-            ).expect("Could not set properties on capsfilter for writing");
+            )
+            .expect("Could not set properties on capsfilter for writing");
 
         let jpegenc = gst::ElementFactory::make("jpegenc", None).expect("Could not create jpegenc");
         jpegenc
@@ -330,7 +334,8 @@ impl Frame {
                 self.buffer
                     .copy_deep()
                     .expect("Could not deep copy buffer for writing"),
-            ).into_result()
+            )
+            .into_result()
             .expect("Could not get result from deep copy for writing");
 
         appsrc

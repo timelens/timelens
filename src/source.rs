@@ -77,7 +77,8 @@ impl VideoSource {
                         ("height", &(output_height as i32)),
                     ],
                 ),
-            ).expect("Could not set properties on input capsfilter");
+            )
+            .expect("Could not set properties on input capsfilter");
 
         // Return the new VideoSource
         Ok(VideoSource {
@@ -104,7 +105,8 @@ impl Iterator for VideoSource {
                 .seek_simple(
                     gst::SeekFlags::FLUSH, // | gst::SeekFlags::KEY_UNIT,
                     (j as u64) * gst::NSECOND,
-                ).expect("Could not seek");
+                )
+                .expect("Could not seek");
         }
 
         match self.appsink.pull_sample() {
@@ -314,7 +316,8 @@ fn build_pipeline(
                     ("height", &(output_height as i32)),
                 ],
             ),
-        ).expect("Could not set properties on input capsfilter");
+        )
+        .expect("Could not set properties on input capsfilter");
 
     let sink = gst::ElementFactory::make("appsink", None).expect("Could not create input appsink");
 
@@ -328,7 +331,8 @@ fn build_pipeline(
             &videoscale,
             &capsfilter,
             &sink,
-        ]).expect("Could not add elements to input pipeline");
+        ])
+        .expect("Could not add elements to input pipeline");
 
     gst::Element::link_many(&[&videoconvert, &videorate, &videoscale, &capsfilter, &sink])
         .expect("Could not link input pipeline");

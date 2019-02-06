@@ -5,10 +5,10 @@ extern crate predicates;
 
 #[cfg(test)]
 mod integration {
-    use assert_cmd::prelude::*;
-    use assert_fs::prelude::*;
     use crate::gst;
     use crate::gst::prelude::*;
+    use assert_cmd::prelude::*;
+    use assert_fs::prelude::*;
     use predicates::prelude::*;
     use std::env;
     use std::path::Path;
