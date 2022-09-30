@@ -1,13 +1,13 @@
 [package]
 name = "timelens"
 version = "0.1.1"
-authors = ["Sebastian Morr <sebastian@morr.cc>"]
+authors = ["blinry <mail@blinry.org>"]
 edition = "2018"
 repository = "https://github.com/timelens/timelens"
-homepage = "https://timelens.io"
+homepage = "https://timelens.blinry.org"
 license = "GPL-2.0-or-later"
 readme = "README.md"
-documentation = "https://timelens.io"
+documentation = "https://timelens.blinry.org"
 description = """
 Timelens creates visual timelines from video files, which visualize
 the videos' color development and can be integrated into video players.
@@ -17,7 +17,7 @@ Additionally, Timelens can create thumbnail grids, which can be used
 to display preview images when the user hovers over the visual timeline.
 Timelens can output a VTT file, which references the thumbnails' positions.
 
-Project homepage: https://timelens.io
+Project homepage: https://timelens.blinry.org
 """
 
 [dependencies]

@@ -1,6 +1,6 @@
 # Timelens
 
-**Timelens** creates visual timelines from video files. For a general introduction, please visit <https://timelens.io>.
+**Timelens** creates visual timelines from video files. For a general introduction, please visit <https://timelens.blinry.org>.
 
 ## Building from source
 
