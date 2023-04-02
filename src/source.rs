@@ -167,7 +167,7 @@ fn get_meta(filename: &str) -> Result<(f32, f32), String> {
     };
     let absolute = absolute
         .to_str()
-        .expect("Could not convert absolut path to str");
+        .expect("Could not convert absolute path to str");
     let uri = format!("file://{}", absolute);
 
     // Set up a playbin element, which automatically select decoders
